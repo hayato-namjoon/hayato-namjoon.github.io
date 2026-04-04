@@ -2,12 +2,122 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>PDF表示</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高度なPDF追跡システム</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        :root { --bg-color: #2c3e50; --toolbar-bg: #1a252f; }
+        body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; background: var(--bg-color); color: white; }
+        .toolbar { height: 50px; background: var(--toolbar-bg); display: flex; align-items: center; justify-content: center; gap: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); z-index: 10; }
+        #viewer-container { flex: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
+        canvas { box-shadow: 0 0 20px rgba(0,0,0,0.5); background: white; max-width: 100%; }
+        button { padding: 5px 15px; cursor: pointer; border-radius: 4px; border: none; background: #3498db; color: white; transition: 0.2s; }
+        button:disabled { background: #7f8c8d; cursor: not-allowed; }
+        button:hover:not(:disabled) { background: #2980b9; }
+    </style>
 </head>
 <body>
-    <h1>PDFドキュメント</h1>
-    <iframe src="est_page_check_file.pdf" width="100%" height="600px">
-        <p>PDFを表示できません。</p>
-    </iframe>
+
+    <div class="toolbar">
+        <button id="prev-btn">前へ</button>
+        <span>Page: <span id="page-num">0</span> / <span id="page-count">0</span></span>
+        <button id="next-btn">次へ</button>
+        <span id="file-label" style="margin-left: 20px; font-size: 0.8em; opacity: 0.7;"></span>
+    </div>
+
+    <div id="viewer-container">
+        <canvas id="pdf-canvas"></canvas>
+    </div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+        // --- 1. 設定情報 (自身のものに書き換えてください) ---
+        const SUPABASE_URL = 'https://your-project-id.supabase.co';
+        const SUPABASE_KEY = 'your-anon-key';
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // --- 2. ユーザー特定 (UUID) ---
+        let userId = localStorage.getItem('site_viewer_uuid');
+        if (!userId) {
+            userId = crypto.randomUUID();
+            localStorage.setItem('site_viewer_uuid', userId);
+        }
+
+        // --- 3. PDF.js 設定 ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const fileName = urlParams.get('file') || test_page_check_file.pdf'; // URL引数 ?file=...
+        document.getElementById('file-label').textContent = `File: ${fileName}`;
+
+        let pdfDoc = null;
+        let pageNum = 1;
+        let isRendering = false;
+        const canvas = document.getElementById('pdf-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- 4. リアルタイム追跡 (Presence) ---
+        const channel = supabase.channel('online-users', {
+            config: { presence: { key: userId } }
+        });
+
+        async function updateStatus(currentPage) {
+            await channel.track({
+                user_id: userId,
+                current_path: fileName,
+                current_page: currentPage,
+                online_at: new Date().toISOString()
+            });
+
+            // 履歴としてDBにも残す（任意）
+            await supabase.from('page_views').insert({
+                user_id: userId,
+                page_path: `${fileName} (Page ${currentPage})`
+            });
+        }
+
+        // --- 5. PDF描画処理 ---
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        async function renderPage(num) {
+            isRendering = true;
+            const page = await pdfDoc.getPage(num);
+            const viewport = page.getViewport({ scale: 1.5 });
+            
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+            isRendering = false;
+            document.getElementById('page-num').textContent = num;
+            
+            // ページ番号が変わるたびに通知
+            updateStatus(num);
+        }
+
+        // PDFの読み込み開始
+        pdfjsLib.getDocument(`./pdfs/${fileName}`).promise.then(doc => {
+            pdfDoc = doc;
+            document.getElementById('page-count').textContent = doc.numPages;
+            
+            // リアルタイム通信を開始
+            channel.subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    renderPage(pageNum);
+                }
+            });
+        });
+
+        // ボタンイベント
+        document.getElementById('prev-btn').onclick = () => {
+            if (pageNum <= 1 || isRendering) return;
+            pageNum--;
+            renderPage(pageNum);
+        };
+        document.getElementById('next-btn').onclick = () => {
+            if (pageNum >= pdfDoc.numPages || isRendering) return;
+            pageNum++;
+            renderPage(pageNum);
+        };
+    </script>
 </body>
 </html>
