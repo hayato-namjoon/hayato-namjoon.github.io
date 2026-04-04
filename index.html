@@ -95,7 +95,8 @@
         }
 
         // PDFの読み込み開始
-        pdfjsLib.getDocument(`./pdfs/${fileName}`).promise.then(doc => {
+        pdfjsLib.getDocument(`./${fileName}`).promise.then(doc => {
+        // ファイルをまとめるとこうなる pdfjsLib.getDocument(`./pdfs/${fileName}`).promise.then(doc => {
             pdfDoc = doc;
             document.getElementById('page-count').textContent = doc.numPages;
             
