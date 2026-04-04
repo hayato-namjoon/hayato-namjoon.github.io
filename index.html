@@ -2,12 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>PDF閲覧監視ダッシュボード（公開版）</title>
+    <title>PDF閲覧監視ダッシュボード</title>
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --light: #ecf0f1; --success: #2ecc71; }
+        :root { --primary: #3498db; --dark: #2c3e50; --light: #ecf0f1; --success: #2ecc71; --accent: #e67e22; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--light); margin: 0; padding: 0; color: var(--dark); }
         
-        /* 上部に浮くナビゲーションバー */
         .top-nav {
             position: sticky;
             top: 0;
@@ -19,38 +18,27 @@
             align-items: center;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         }
-        .nav-link {
-            color: white;
-            text-decoration: none;
-            background: var(--primary);
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-weight: bold;
-            transition: opacity 0.2s;
-        }
-        .nav-link:hover { opacity: 0.8; }
+        .nav-link { color: white; text-decoration: none; background: var(--primary); padding: 8px 16px; border-radius: 4px; font-weight: bold; }
         .nav-title { color: white; margin: 0; font-size: 1.1em; }
 
         .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
         h1, h2 { border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
         
-        /* ダッシュボードレイアウト */
-        #admin-content { display: block; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         
-        /* ユーザーカード（リアルタイム） */
+        /* ユーザーカード */
         .user-badge { background: #fff; border-left: 5px solid var(--success); padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
-        .page-indicator { background: var(--success); color: white; padding: 5px 10px; border-radius: 20px; font-size: 0.9em; font-weight: bold; }
+        .info-group { flex-grow: 1; }
+        .time-badge { font-size: 0.8em; color: #666; background: #eee; padding: 2px 6px; border-radius: 4px; margin-left: 10px; }
+        .page-indicator { background: var(--success); color: white; padding: 5px 10px; border-radius: 20px; font-size: 0.9em; font-weight: bold; min-width: 40px; text-align: center; }
         
-        /* テーブル（履歴） */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; font-size: 0.9em; }
         th { background: #f8f9fa; }
         .status-online { color: var(--success); font-weight: bold; animation: blink 1.5s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
-        /* レスポンシブ対応 */
         @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -84,8 +72,7 @@
                             <th>Page</th>
                         </tr>
                     </thead>
-                    <tbody id="history-table">
-                    </tbody>
+                    <tbody id="history-table"></tbody>
                 </table>
             </div>
         </div>
@@ -95,26 +82,53 @@
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-    // --- 設定 ---
     const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // --- 起動処理 ---
+    // 滞在時間計算用の開始時間記録
+    const sessionStartTimes = new Map();
+
     function startDashboard() {
         initPresence();
         loadHistory();
-        setInterval(loadHistory, 5000); // 5秒更新
+        setInterval(loadHistory, 5000);
+        // 表示上の「経過時間」だけを更新するためのタイマー（10秒ごと）
+        setInterval(refreshPresenceDisplay, 10000);
     }
 
-    // 1. リアルタイム監視 (Presence)
+    let lastUsersData = [];
+
     function initPresence() {
         const channel = supabase.channel('online-users');
         
         channel.on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
-            const users = Object.values(state).flat();
-            renderPresence(users);
+            
+            // --- ID重複排除ロジック ---
+            const rawUsers = Object.values(state).flat();
+            const uniqueUsersMap = new Map();
+
+            rawUsers.forEach(u => {
+                const id = u.user_id || 'anonymous';
+                // 既に存在するIDなら、より新しいデータ（またはページ番号が大きい方など）で上書き
+                uniqueUsersMap.set(id, u);
+
+                // 初めて登場したIDなら開始時間を記録
+                if (!sessionStartTimes.has(id)) {
+                    sessionStartTimes.set(id, Date.now());
+                }
+            });
+
+            // 存在しなくなったIDの時間を消去
+            for (let id of sessionStartTimes.keys()) {
+                if (!uniqueUsersMap.has(id)) {
+                    sessionStartTimes.delete(id);
+                }
+            }
+
+            lastUsersData = Array.from(uniqueUsersMap.values());
+            renderPresence(lastUsersData);
         }).subscribe();
     }
 
@@ -127,19 +141,30 @@
             return;
         }
 
-        list.innerHTML = users.map(u => `
-            <div class="user-badge">
-                <div>
-                    <span class="status-online">●</span>
-                    <strong>ID: ${u.user_id ? u.user_id.slice(0, 8) : '匿名'}</strong><br>
-                    <small>${u.current_path || '不明'}</small>
+        list.innerHTML = users.map(u => {
+            const id = u.user_id || 'anonymous';
+            const startTime = sessionStartTimes.get(id);
+            const durationMin = Math.floor((Date.now() - startTime) / 60000);
+
+            return `
+                <div class="user-badge">
+                    <div class="info-group">
+                        <span class="status-online">●</span>
+                        <strong>ID: ${id.slice(0, 8)}</strong>
+                        <span class="time-badge">滞在: ${durationMin}分</span><br>
+                        <small>${u.current_path || '不明'}</small>
+                    </div>
+                    <div class="page-indicator">${u.current_page || 0} P</div>
                 </div>
-                <div class="page-indicator">${u.current_page || 0} P</div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
-    // 2. 履歴データの読み込み (DB)
+    // Presenceデータ自体に変更がなくても、分表示を更新するために呼ぶ
+    function refreshPresenceDisplay() {
+        renderPresence(lastUsersData);
+    }
+
     async function loadHistory() {
         const { data, error } = await supabase
             .from('page_views')
@@ -147,10 +172,7 @@
             .order('viewed_at', { ascending: false })
             .limit(20);
 
-        if (error) {
-            console.error("データ取得エラー:", error);
-            return;
-        }
+        if (error) return;
 
         const tbody = document.getElementById('history-table');
         tbody.innerHTML = data.map(row => `
@@ -163,9 +185,7 @@
         `).join('');
     }
 
-    // 実行開始
     startDashboard();
-
 </script>
 </body>
 </html>
