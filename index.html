@@ -46,7 +46,7 @@
 
         // --- 3. PDF.js 設定 ---
         const urlParams = new URLSearchParams(window.location.search);
-        const fileName = urlParams.get('file') || test_page_check_file.pdf'; // URL引数 ?file=...
+        const fileName = urlParams.get('file') || ./test_page_check_file.pdf'; // URL引数 ?file=...
         document.getElementById('file-label').textContent = `File: ${fileName}`;
 
         let pdfDoc = null;
