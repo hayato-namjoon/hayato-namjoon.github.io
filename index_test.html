@@ -5,14 +5,37 @@
     <title>PDF閲覧監視ダッシュボード（公開版）</title>
     <style>
         :root { --primary: #3498db; --dark: #2c3e50; --light: #ecf0f1; --success: #2ecc71; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--light); margin: 0; padding: 20px; color: var(--dark); }
-        .container { max-width: 1200px; margin: 0 auto; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--light); margin: 0; padding: 0; color: var(--dark); }
+        
+        /* 上部に浮くナビゲーションバー */
+        .top-nav {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: var(--dark);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            background: var(--primary);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+        .nav-link:hover { opacity: 0.8; }
+        .nav-title { color: white; margin: 0; font-size: 1.1em; }
+
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
         h1, h2 { border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
         
-        /* ログインフォームは削除したため不要 */
-        
         /* ダッシュボードレイアウト */
-        #admin-content { display: block; } /* 常に表示 */
+        #admin-content { display: block; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         
@@ -26,15 +49,21 @@
         th { background: #f8f9fa; }
         .status-online { color: var(--success); font-weight: bold; animation: blink 1.5s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+        /* レスポンシブ対応 */
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
 
+<nav class="top-nav">
+    <h2 class="nav-title">Admin Dashboard</h2>
+    <a href="view_site.htm" class="nav-link">← PDF閲覧ページへ</a>
+</nav>
+
 <div class="container">
     <div id="admin-content">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h1>PDFリアルタイム監視</h1>
-            </div>
+        <h1>PDFリアルタイム監視</h1>
 
         <div class="grid">
             <div class="card">
@@ -71,15 +100,11 @@
     const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    const adminContent = document.getElementById('admin-content');
-
     // --- 起動処理 ---
-    // ページ読み込み時に直接ダッシュボードを起動
     function startDashboard() {
         initPresence();
         loadHistory();
-        // 5秒ごとに履歴をリフレッシュ
-        setInterval(loadHistory, 5000);
+        setInterval(loadHistory, 5000); // 5秒更新
     }
 
     // 1. リアルタイム監視 (Presence)
