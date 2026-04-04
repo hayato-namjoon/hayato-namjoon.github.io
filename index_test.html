@@ -1,41 +1,146 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<title>あなたのＨＰタイトル</title>
-<meta name="keywords" content="ページのキーワードA,B,C">
-<meta name="description" content="ページの説明">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <title>PDF閲覧監視ダッシュボード（公開版）</title>
+    <style>
+        :root { --primary: #3498db; --dark: #2c3e50; --light: #ecf0f1; --success: #2ecc71; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--light); margin: 0; padding: 20px; color: var(--dark); }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1, h2 { border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        
+        /* ログインフォームは削除したため不要 */
+        
+        /* ダッシュボードレイアウト */
+        #admin-content { display: block; } /* 常に表示 */
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        
+        /* ユーザーカード（リアルタイム） */
+        .user-badge { background: #fff; border-left: 5px solid var(--success); padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .page-indicator { background: var(--success); color: white; padding: 5px 10px; border-radius: 20px; font-size: 0.9em; font-weight: bold; }
+        
+        /* テーブル（履歴） */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+        th { background: #f8f9fa; }
+        .status-online { color: var(--success); font-weight: bold; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    </style>
 </head>
 <body>
-<div id="outer">
-<header>
-<div class="header-inner">
-<h1>あなたのＨＰタイトル</h1>
-<p>あなたのＨＰの説明文</p>
+
+<div class="container">
+    <div id="admin-content">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>PDFリアルタイム監視</h1>
+            </div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>現在オンライン (<span id="user-count">0</span>)</h2>
+                <div id="presence-list">
+                    <p style="color: #999;">現在、閲覧中のユーザーはいません。</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>最近の閲覧履歴 (最新20件)</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>時刻</th>
+                            <th>ユーザーID</th>
+                            <th>ファイル</th>
+                            <th>Page</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
-</header>
-<div id="content">
-<div class="inner">
-<h2>記事ページ見出し・大</h2>
-<p>文章あれこれ</p>
-<h3>記事ページ見出し・中</h3>
-<p>文章あれこれ</p>
-<h4>記事ページ見出し・小</h4>
-<p>文章あれこれ</p>
-</div>
-<aside>
-<div class="left-title">サイドバータイトル</div>
-<div class="link">
-<ul>
-<li>記事ページへのリンク</li>
-<li>記事ページへのリンク</li>
-</ul>
-</div>
-</aside>
-</div>
-<footer>© 2010 あなたのホームページ</footer>
-</div>
+
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    // --- 設定 ---
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const adminContent = document.getElementById('admin-content');
+
+    // --- 起動処理 ---
+    // ページ読み込み時に直接ダッシュボードを起動
+    function startDashboard() {
+        initPresence();
+        loadHistory();
+        // 5秒ごとに履歴をリフレッシュ
+        setInterval(loadHistory, 5000);
+    }
+
+    // 1. リアルタイム監視 (Presence)
+    function initPresence() {
+        const channel = supabase.channel('online-users');
+        
+        channel.on('presence', { event: 'sync' }, () => {
+            const state = channel.presenceState();
+            const users = Object.values(state).flat();
+            renderPresence(users);
+        }).subscribe();
+    }
+
+    function renderPresence(users) {
+        document.getElementById('user-count').textContent = users.length;
+        const list = document.getElementById('presence-list');
+        
+        if (users.length === 0) {
+            list.innerHTML = '<p style="color: #999;">閲覧中のユーザーはいません。</p>';
+            return;
+        }
+
+        list.innerHTML = users.map(u => `
+            <div class="user-badge">
+                <div>
+                    <span class="status-online">●</span>
+                    <strong>ID: ${u.user_id ? u.user_id.slice(0, 8) : '匿名'}</strong><br>
+                    <small>${u.current_path || '不明'}</small>
+                </div>
+                <div class="page-indicator">${u.current_page || 0} P</div>
+            </div>
+        `).join('');
+    }
+
+    // 2. 履歴データの読み込み (DB)
+    async function loadHistory() {
+        const { data, error } = await supabase
+            .from('page_views')
+            .select('*')
+            .order('viewed_at', { ascending: false })
+            .limit(20);
+
+        if (error) {
+            console.error("データ取得エラー:", error);
+            return;
+        }
+
+        const tbody = document.getElementById('history-table');
+        tbody.innerHTML = data.map(row => `
+            <tr>
+                <td>${new Date(row.viewed_at).toLocaleTimeString()}</td>
+                <td><code>${row.user_id ? row.user_id.slice(0, 8) : '匿名'}</code></td>
+                <td>${row.file_name || '-'}</td>
+                <td><strong>${row.current_page || row.page_path || '-'}</strong></td>
+            </tr>
+        `).join('');
+    }
+
+    // 実行開始
+    startDashboard();
+
+</script>
 </body>
 </html>
