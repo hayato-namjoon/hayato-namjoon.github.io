@@ -1,0 +1,128 @@
+このページでは、Cookieの確認 → 登録済みなら自動転送 → 未登録ならフォーム表示＆UUID発行 という一連の流れを自動化します。
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>閲覧登録 - 資料ダウンロード</title>
+    <style>
+        :root { --primary: #3498db; --dark: #2c3e50; --bg: #f4f7f6; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg); margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .form-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 400px; display: none; /* 初期は非表示 */ }
+        h1 { font-size: 1.5rem; color: var(--dark); margin-bottom: 20px; text-align: center; }
+        .field { margin-bottom: 15px; }
+        label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #666; }
+        input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+        button { width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 10px; }
+        button:hover { background: #2980b9; }
+        .loading { text-align: center; color: var(--dark); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="loading-screen" class="loading">認証情報を確認中...</div>
+
+<div class="form-card" id="registration-form">
+    <h1>資料閲覧フォーム</h1>
+    <form id="lead-form">
+        <div class="field">
+            <label>会社名</label>
+            <input type="text" id="company_name" required placeholder="株式会社〇〇">
+        </div>
+        <div class="field">
+            <label>部署名</label>
+            <input type="text" id="department" required placeholder="営業部">
+        </div>
+        <div class="field">
+            <label>お名前</label>
+            <input type="text" id="full_name" required placeholder="山田 太郎">
+        </div>
+        <div class="field">
+            <label>電話番号</label>
+            <input type="tel" id="phone" required placeholder="090-0000-0000">
+        </div>
+        <div class="field">
+            <label>メールアドレス</label>
+            <input type="email" id="email" required placeholder="example@mail.com">
+        </div>
+        <button type="submit" id="submit-btn">資料を閲覧する</button>
+    </form>
+</div>
+
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const COOKIE_NAME = 'viewer_uuid';
+
+    // 1. Cookieを取得する関数
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+
+    // 2. Cookieをセットする関数 (有効期限1年)
+    function setCookie(name, value) {
+        const date = new Date();
+        date.setFullYear(date.getFullYear() + 1);
+        document.cookie = `${name}=${value}; path=/; expires=${date.toUTCString()}; SameSite=Lax`;
+    }
+
+    // 3. ページ初期化処理
+    async function init() {
+        const uuid = getCookie(COOKIE_NAME);
+
+        if (uuid) {
+            // すでにIDがある場合は、登録済みか確認（念のため）して転送
+            console.log("既存ユーザーを発見:", uuid);
+            window.location.href = `view_site.html?id=${uuid}`;
+        } else {
+            // 新規ユーザーならフォームを表示
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('registration-form').style.display = 'block';
+        }
+    }
+
+    // 4. フォーム送信処理
+    document.getElementById('lead-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.textContent = "登録中...";
+
+        // 新しいUUIDを発行
+        const newUuid = crypto.randomUUID();
+
+        const profileData = {
+            id: newUuid,
+            company_name: document.getElementById('company_name').value,
+            department: document.getElementById('department').value,
+            full_name: document.getElementById('full_name').value,
+            phone: document.getElementById('phone').value,
+            email: document.getElementById('email').value
+        };
+
+        // Supabaseに保存
+        const { error } = await supabase.from('profiles').insert([profileData]);
+
+        if (error) {
+            alert("エラーが発生しました: " + error.message);
+            btn.disabled = false;
+            btn.textContent = "資料を閲覧する";
+        } else {
+            // Cookieに保存して閲覧ページへ
+            setCookie(COOKIE_NAME, newUuid);
+            window.location.href = `view_site.html?id=${newUuid}`;
+        }
+    };
+
+    init();
+</script>
+</body>
+</html>
+
