@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>営業分析ダッシュボード</title>
+    <style>
+        :root { --primary: #3498db; --dark: #2c3e50; --light: #ecf0f1; --success: #2ecc71; --hot: #e74c3c; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--light); margin: 0; padding: 0; color: var(--dark); }
+        
+        /* ナビゲーション */
+        .top-nav { position: sticky; top: 0; z-index: 1000; background: var(--dark); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+        .nav-link { color: white; text-decoration: none; background: var(--primary); padding: 8px 16px; border-radius: 4px; font-weight: bold; }
+        .nav-title { color: white; margin: 0; font-size: 1.1em; }
+
+        .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
+        
+        .grid { display: grid; grid-template-columns: 400px 1fr; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        
+        /* リアルタイム・ユーザーバッジ */
+        .user-badge { 
+            background: #fff; border-left: 5px solid var(--success); padding: 15px; margin-bottom: 12px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center;
+            transition: all 0.3s;
+        }
+        /* 5分以上滞在しているユーザーを強調 */
+        .user-badge.is-hot { border-left-color: var(--hot); background: #fff5f5; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); } 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); } }
+
+        .user-info b { font-size: 1.1em; display: block; color: var(--dark); }
+        .user-info span { font-size: 0.85em; color: #666; }
+        .status-tag { background: #eee; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-top: 5px; display: inline-block; }
+        
+        .page-indicator { background: var(--primary); color: white; padding: 8px 12px; border-radius: 8px; font-weight: bold; }
+
+        /* 履歴テーブル */
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; font-size: 0.85em; }
+        th { background: #f8f9fa; color: #666; }
+        .contact-info { color: var(--primary); font-family: monospace; }
+    </style>
+</head>
+<body>
+
+<nav class="top-nav">
+    <h2 class="nav-title">Sales Intelligence Dashboard</h2>
+    <a href="index.html" class="nav-link">ポータルへ戻る</a>
+</nav>
+
+<div class="container">
+    <div class="grid">
+        <div class="section">
+            <h2>現在閲覧中 (<span id="user-count">0</span>)</h2>
+            <div id="presence-list"></div>
+        </div>
+
+        <div class="section">
+            <h2>閲覧履歴 (最新50件)</h2>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>時刻</th>
+                            <th>顧客情報</th>
+                            <th>連絡先</th>
+                            <th>ファイル / ページ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const sessionStartTimes = new Map();
+    const profileCache = new Map(); // プロファイル取得回数を減らすためのキャッシュ
+
+    // 1. プロファイル情報の取得（キャッシュ付き）
+    async function getProfile(id) {
+        if (profileCache.has(id)) return profileCache.get(id);
+        const { data } = await supabase.from('profiles').select('*').eq('id', id).single();
+        if (data) profileCache.set(id, data);
+        return data;
+    }
+
+    // 2. プレゼンス監視
+    function initPresence() {
+        const channel = supabase.channel('online-users');
+        channel.on('presence', { event: 'sync' }, async () => {
+            const state = channel.presenceState();
+            const rawUsers = Object.values(state).flat();
+            
+            // IDで重複排除
+            const uniqueMap = new Map();
+            for (const u of rawUsers) {
+                const id = u.user_id;
+                if (!sessionStartTimes.has(id)) sessionStartTimes.set(id, Date.now());
+                uniqueMap.set(id, u);
+            }
+
+            // 終了したセッションを削除
+            for (let id of sessionStartTimes.keys()) {
+                if (!uniqueMap.has(id)) sessionStartTimes.delete(id);
+            }
+
+            renderPresence(Array.from(uniqueMap.values()));
+        }).subscribe();
+    }
+
+    async function renderPresence(users) {
+        document.getElementById('user-count').textContent = users.length;
+        const list = document.getElementById('presence-list');
+        
+        let html = '';
+        for (const u of users) {
+            const profile = await getProfile(u.user_id);
+            const startTime = sessionStartTimes.get(u.user_id);
+            const durationMin = Math.floor((Date.now() - startTime) / 60000);
+            const isHot = durationMin >= 5; // 5分以上で「アツい」判定
+
+            html += `
+                <div class="user-badge ${isHot ? 'is-hot' : ''}">
+                    <div class="user-info">
+                        <b>${profile ? profile.company_name : '不明'}</b>
+                        <span>${profile ? profile.full_name : '匿名ユーザー'}</span>
+                        <div class="status-tag">滞在: ${durationMin}分 ${isHot ? '🔥' : ''}</div>
+                    </div>
+                    <div class="page-indicator">${u.current_page} P</div>
+                </div>
+            `;
+        }
+        list.innerHTML = html || '<p>現在、オンラインのユーザーはいません。</p>';
+    }
+
+    // 3. 履歴の取得（JOINを使用）
+    async function loadHistory() {
+        const { data, error } = await supabase
+            .from('page_views')
+            .select('*, profiles(*)') // profilesテーブルと結合
+            .order('viewed_at', { ascending: false })
+            .limit(50);
+
+        if (error) return;
+
+        const tbody = document.getElementById('history-table');
+        tbody.innerHTML = data.map(row => {
+            const p = row.profiles || {};
+            return `
+                <tr>
+                    <td>${new Date(row.viewed_at).toLocaleTimeString()}</td>
+                    <td>
+                        <strong>${p.company_name || '未登録'}</strong><br>
+                        ${p.full_name || '匿名'} (${p.department || '-'})
+                    </td>
+                    <td class="contact-info">
+                        ${p.email || '-'}<br>${p.phone || '-'}
+                    </td>
+                    <td>
+                        ${row.file_name}<br>
+                        <b style="color:var(--primary)">${row.current_page} ページ目</b>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // 初期化
+    initPresence();
+    loadHistory();
+    setInterval(loadHistory, 10000); // 10秒おきに履歴更新
+    setInterval(() => renderPresence(Array.from(sessionStartTimes.keys()).map(id => ({user_id: id}))), 30000);
+
+</script>
+</body>
+</html>
