@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF資料閲覧</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        :root { --primary: #3498db; --dark: #2c3e50; }
+        body { margin: 0; background: #525659; font-family: sans-serif; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* ヘッダー */
+        .toolbar { background: var(--dark); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 100; }
+        .user-info { font-size: 0.9em; color: #bdc3c7; }
+        .pager { display: flex; align-items: center; gap: 15px; }
+        button { background: #444; border: 1px solid #666; color: white; padding: 5px 15px; cursor: pointer; border-radius: 4px; }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+        
+        /* PDF表示エリア */
+        #pdf-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
+        canvas { box-shadow: 0 0 20px rgba(0,0,0,0.5); background: white; }
+    </style>
+</head>
+<body>
+
+<div class="toolbar">
+    <div class="user-info" id="welcome-msg">読み込み中...</div>
+    <div class="pager">
+        <button id="prev-btn">前へ</button>
+        <span>Page: <span id="page-num">1</span> / <span id="page-count">-</span></span>
+        <button id="next-btn">次へ</button>
+    </div>
+    <div style="width: 100px;"></div> </div>
+
+<div id="pdf-container">
+    <canvas id="pdf-render"></canvas>
+</div>
+
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    // --- 設定 ---
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    const PDF_URL = './test_page_check_file.pdf'; // 表示するPDFパス
+
+    // --- 状態管理 ---
+    let pdfDoc = null, pageNum = 1, isRendering = false;
+    const canvas = document.getElementById('pdf-render');
+    const ctx = canvas.getContext('2d');
+    
+    // UUIDの取得 (URL優先、なければCookie)
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewerId = urlParams.get('id') || getCookie('viewer_uuid');
+
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+
+    // --- 1. 初期化とプロファイル取得 ---
+    async function initViewer() {
+        if (!viewerId) {
+            window.location.href = 'entry.html'; // IDがなければ登録へ
+            return;
+        }
+
+        // プロファイルを取得して挨拶を表示
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
+        if (profile) {
+            document.getElementById('welcome-msg').textContent = `${profile.company_name} ${profile.full_name} 様`;
+        }
+
+        // PDF読み込み
+        pdfjsLib.getDocument(PDF_URL).promise.then(doc => {
+            pdfDoc = doc;
+            document.getElementById('page-count').textContent = doc.numPages;
+            renderPage(pageNum);
+            logView(pageNum); // 初回ログ
+            startPresence();   // リアルタイム監視開始
+        });
+    }
+
+    // --- 2. ログ記録 (履歴用) ---
+    async function logView(p) {
+        await supabase.from('page_views').insert([{
+            user_id: viewerId,
+            file_name: PDF_URL.split('/').pop(),
+            current_page: p,
+            viewed_at: new Date().toISOString()
+        }]);
+    }
+
+    // --- 3. リアルタイム監視 (Presence & Heartbeat) ---
+    async function startPresence() {
+        const channel = supabase.channel('online-users');
+        
+        const trackStatus = () => {
+            channel.track({
+                user_id: viewerId,
+                current_page: pageNum,
+                current_path: PDF_URL.split('/').pop(),
+                online_at: new Date().toISOString()
+            });
+        };
+
+        channel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') trackStatus();
+        });
+
+        // ページ移動時や30秒ごとにプレゼンスを更新（滞在時間の計算用）
+        window.updatePresence = trackStatus;
+        setInterval(trackStatus, 30000);
+    }
+
+    // --- 4. PDFレンダリング ---
+    function renderPage(num) {
+        isRendering = true;
+        pdfDoc.getPage(num).then(page => {
+            const viewport = page.getViewport({ scale: 1.5 });
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            const renderCtx = { canvasContext: ctx, viewport: viewport };
+            page.render(renderCtx).promise.then(() => {
+                isRendering = false;
+                document.getElementById('page-num').textContent = num;
+            });
+        });
+    }
+
+    // --- 5. イベント制御 ---
+    document.getElementById('prev-btn').onclick = () => {
+        if (pageNum <= 1 || isRendering) return;
+        pageNum--;
+        renderPage(pageNum);
+        logView(pageNum);
+        if (window.updatePresence) window.updatePresence();
+    };
+
+    document.getElementById('next-btn').onclick = () => {
+        if (pageNum >= pdfDoc.numPages || isRendering) return;
+        pageNum++;
+        renderPage(pageNum);
+        logView(pageNum);
+        if (window.updatePresence) window.updatePresence();
+    };
+
+    // 離脱検知（ブラウザを閉じる時など）
+    window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            // 必要に応じて「離脱時刻」をDBに送る処理などをここに追加
+            console.log("ユーザーが離脱しました");
+        }
+    });
+
+    initViewer();
+</script>
+</body>
+</html>
+
