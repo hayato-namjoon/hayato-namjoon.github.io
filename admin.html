@@ -5,55 +5,61 @@
     <title>営業分析ダッシュボード Pro</title>
     <style>
         :root { --primary: #3498db; --dark: #2c3e50; --light: #ecf0f1; --success: #2ecc71; --hot: #e74c3c; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--light); margin: 0; padding: 0; color: var(--dark); }
-        
-        .top-nav { position: sticky; top: 0; z-index: 1000; background: var(--dark); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--light); margin: 0; padding: 0; }
+        .top-nav { position: sticky; top: 0; z-index: 1000; background: var(--dark); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; color: white; }
         .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
-        .grid { display: grid; grid-template-columns: 400px 1fr; gap: 20px; }
         
-        /* 閲覧中ユーザーカード */
+        /* フィルタエリア */
+        .filter-bar { background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .filter-bar input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 250px; }
+
+        .grid { display: grid; grid-template-columns: 400px 1fr; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        
+        /* ユーザーバッジ */
         .user-badge { 
             background: #fff; border-left: 5px solid var(--success); padding: 15px; margin-bottom: 12px; 
             box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center;
             cursor: pointer; transition: transform 0.1s;
         }
-        .user-badge:hover { transform: scale(1.02); background: #f9f9f9; }
+        .user-badge:hover { transform: translateY(-2px); }
         .user-badge.is-hot { border-left-color: var(--hot); background: #fff5f5; }
-        
-        /* ポップアップ（モーダル） */
-        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); }
-        .modal-content { background: white; margin: 5% auto; padding: 30px; border-radius: 12px; width: 500px; position: relative; }
-        .close { position: absolute; right: 20px; top: 10px; font-size: 28px; cursor: pointer; }
-        .stat-box { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; }
-        .hot-page-list { list-style: none; padding: 0; }
-        .hot-page-list li { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee; }
+        .page-indicator { background: var(--primary); color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
 
-        /* テーブル集約表示 */
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
-        th, td { text-align: left; padding: 15px; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; }
+        /* モーダル */
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: white; margin: 5% auto; padding: 30px; border-radius: 12px; width: 550px; position: relative; }
+        .sync-link { display: inline-block; margin-top: 10px; padding: 8px 15px; background: var(--success); color: white; text-decoration: none; border-radius: 4px; font-weight: bold; }
+        .hot-list { margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
     </style>
 </head>
 <body>
 
+<nav class="top-nav">
+    <h2>Sales Intelligence Panel</h2>
+    <a href="index.html" style="color:white; text-decoration:none;">ポータルへ戻る</a>
+</nav>
+
 <div class="container">
+    <div class="filter-bar">
+        <strong>🔍 フィルタ:</strong>
+        <input type="text" id="filter-company" placeholder="会社名で絞り込み..." oninput="handleFilter()">
+        <input type="text" id="filter-file" placeholder="PDF名で絞り込み..." oninput="handleFilter()">
+    </div>
+
     <div class="grid">
         <div class="section">
-            <h2>現在閲覧中 (<span id="user-count">0</span>)</h2>
+            <h3>現在閲覧中 (<span id="user-count">0</span>)</h3>
             <div id="presence-list"></div>
         </div>
-
         <div class="section">
-            <h2>顧客別・最終閲覧ステータス</h2>
+            <h3>最新の顧客動向</h3>
             <div class="card">
                 <table>
-                    <thead>
-                        <tr>
-                            <th>最終閲覧</th>
-                            <th>顧客名</th>
-                            <th>現在/最終ページ</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>時刻</th><th>顧客</th><th>PDF</th><th>最終P</th></tr></thead>
                     <tbody id="history-table"></tbody>
                 </table>
             </div>
@@ -63,19 +69,20 @@
 
 <div id="userModal" class="modal">
     <div class="modal-content">
-        <span class="close" onclick="closeModal()">&times;</span>
         <h2 id="m-company">会社名</h2>
-        <p id="m-name" style="font-size: 1.2em; color: var(--primary); font-weight: bold;">氏名</p>
+        <p id="m-user" style="font-size: 1.2em; color: var(--primary); font-weight: bold;">名前</p>
+        <p>連絡先: <span id="m-contact"></span></p>
         <hr>
-        <p><strong>部署:</strong> <span id="m-dept">-</span></p>
-        <p><strong>電話:</strong> <span id="m-phone">-</span></p>
-        <p><strong>メール:</strong> <span id="m-email">-</span></p>
-        
-        <div class="stat-box">
-            <strong>📊 ページ別閲覧回数（関心度）</strong>
-            <ul id="m-hot-pages" class="hot-page-list"></ul>
+        <div id="m-analysis">
+            <p>現在閲覧中のPDF: <b id="m-file"></b></p>
+            <p>現在のページ: <b id="m-page"></b></p>
+            <a id="m-sync-link" href="#" target="_blank" class="sync-link">🔗 閲覧者と同じページを開く</a>
         </div>
-        <button onclick="closeModal()" style="width:100%; margin-top:20px; padding:10px; background:var(--dark); color:white; border:none; border-radius:5px;">閉じる</button>
+        <div class="hot-list">
+            <strong>🔥 この資料の上位3滞在ページ</strong>
+            <div id="m-hot-pages"></div>
+        </div>
+        <button onclick="document.getElementById('userModal').style.display='none'" style="width:100%; margin-top:20px; padding:10px;">閉じる</button>
     </div>
 </div>
 
@@ -86,105 +93,10 @@
     const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+    let allOnlineUsers = [];
     const profileCache = new Map();
-    const lastPageCache = new Map();
+    const lastPageCache = new Map(); // undefined対策用
     const sessionStartTimes = new Map();
-
-    // --- 1. ユーザー詳細表示機能 ---
-    window.showUserDetail = async (userId) => {
-        const profile = await getProfile(userId);
-        if (!profile) return;
-
-        // モーダルに基本情報をセット
-        document.getElementById('m-company').textContent = profile.company_name;
-        document.getElementById('m-name').textContent = profile.full_name;
-        document.getElementById('m-dept').textContent = profile.department;
-        document.getElementById('m-phone').textContent = profile.phone;
-        document.getElementById('m-email').textContent = profile.email;
-
-        // 関心度（ページ別閲覧数）の集計
-        const { data: views } = await supabase
-            .from('page_views')
-            .select('current_page')
-            .eq('user_id', userId);
-
-        const counts = {};
-        views.forEach(v => counts[v.current_page] = (counts[v.current_page] || 0) + 1);
-        
-        const sortedPages = Object.entries(counts)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5); // 上位5ページ
-
-        const listHtml = sortedPages.map(([page, count]) => `
-            <li><span>${page} ページ</span> <span>${count} 回表示</span></li>
-        `).join('');
-        
-        document.getElementById('m-hot-pages').innerHTML = listHtml || 'データなし';
-        document.getElementById('userModal').style.display = 'block';
-    };
-
-    window.closeModal = () => {
-        document.getElementById('userModal').style.display = 'none';
-    };
-
-    // --- 2. 履歴の集約表示（ユーザーごとに最新1件） ---
-    async function loadHistory() {
-        // 各ユーザーの最新のview_idを取得するクエリ（PostgreSQLのDISTINCT ON相当を擬似的に実行）
-        const { data, error } = await supabase
-            .from('page_views')
-            .select('*, profiles(*)')
-            .order('viewed_at', { ascending: false });
-
-        if (error) return;
-
-        // ユーザーIDで重複を排除（最新のものだけ残す）
-        const uniqueHistory = [];
-        const seenIds = new Set();
-        for (const row of data) {
-            if (!seenIds.has(row.user_id)) {
-                uniqueHistory.push(row);
-                seenIds.add(row.user_id);
-            }
-        }
-
-        const tbody = document.getElementById('history-table');
-        tbody.innerHTML = uniqueHistory.map(row => `
-            <tr onclick="showUserDetail('${row.user_id}')" style="cursor:pointer;">
-                <td>${new Date(row.viewed_at).toLocaleString()}</td>
-                <td><b>${row.profiles?.company_name || '未登録'}</b><br>${row.profiles?.full_name || '匿名'}</td>
-                <td><span class="page-indicator" style="padding:4px 8px;">${row.current_page} P</span></td>
-            </tr>
-        `).join('');
-    }
-
-    // --- 3. リアルタイム監視 ---
-    async function renderPresence(users) {
-        document.getElementById('user-count').textContent = users.length;
-        const list = document.getElementById('presence-list');
-        let html = '';
-
-        for (const u of users) {
-            const profile = await getProfile(u.user_id);
-            if (u.current_page) lastPageCache.set(u.user_id, u.current_page);
-            const displayPage = lastPageCache.get(u.user_id) || '1';
-            
-            const startTime = sessionStartTimes.get(u.user_id);
-            const durationMin = Math.floor((Date.now() - startTime) / 60000);
-            const isHot = durationMin >= 5;
-
-            html += `
-                <div class="user-badge ${isHot ? 'is-hot' : ''}" onclick="showUserDetail('${u.user_id}')">
-                    <div class="user-info">
-                        <b>${profile ? profile.company_name : '読込中...'}</b>
-                        <span>${profile ? profile.full_name : ''}</span>
-                        <div class="status-tag">滞在: ${durationMin}分</div>
-                    </div>
-                    <div class="page-indicator">${displayPage} P</div>
-                </div>
-            `;
-        }
-        list.innerHTML = html || '<p>オンラインのユーザーはいません</p>';
-    }
 
     async function getProfile(id) {
         if (profileCache.has(id)) return profileCache.get(id);
@@ -193,18 +105,107 @@
         return data;
     }
 
+    // フィルタリング処理
+    window.handleFilter = () => {
+        renderPresence(allOnlineUsers);
+        loadHistory();
+    };
+
+    // リアルタイム監視
     function initPresence() {
         const channel = supabase.channel('online-users');
         channel.on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
             const users = Object.values(state).flat();
-            const uniqueUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
-            
-            uniqueUsers.forEach(u => {
-                if (!sessionStartTimes.has(u.user_id)) sessionStartTimes.set(u.user_id, Date.now());
-            });
-            renderPresence(uniqueUsers);
+            // 重複排除
+            allOnlineUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
+            renderPresence(allOnlineUsers);
         }).subscribe();
+    }
+
+    async function renderPresence(users) {
+        const companyFilter = document.getElementById('filter-company').value.toLowerCase();
+        const fileFilter = document.getElementById('filter-file').value.toLowerCase();
+        
+        const list = document.getElementById('presence-list');
+        let html = '';
+        let count = 0;
+
+        for (const u of users) {
+            const profile = await getProfile(u.user_id);
+            if (!profile) continue;
+
+            // フィルタリング判定
+            if (!profile.company_name.toLowerCase().includes(companyFilter)) continue;
+            if (u.current_path && !u.current_path.toLowerCase().includes(fileFilter)) continue;
+
+            if (u.current_page) lastPageCache.set(u.user_id, u.current_page);
+            const displayPage = lastPageCache.get(u.user_id) || '1';
+            
+            if (!sessionStartTimes.has(u.user_id)) sessionStartTimes.set(u.user_id, Date.now());
+            const durationMin = Math.floor((Date.now() - sessionStartTimes.get(u.user_id)) / 60000);
+
+            count++;
+            html += `
+                <div class="user-badge ${durationMin >= 5 ? 'is-hot' : ''}" onclick="showUserDetail('${u.user_id}', '${displayPage}')">
+                    <div class="user-info">
+                        <b>${profile.company_name}</b>
+                        <span>${profile.full_name} (${durationMin}分)</span>
+                    </div>
+                    <div class="page-indicator">${displayPage} P</div>
+                </div>`;
+        }
+        document.getElementById('user-count').textContent = count;
+        list.innerHTML = html || '<p>該当するユーザーはいません</p>';
+    }
+
+    // モーダル表示 (詳細 + 上位3ページ + 同期リンク)
+    window.showUserDetail = async (userId, currentPage) => {
+        const profile = await getProfile(userId);
+        
+        // 最新の閲覧PDFを取得
+        const { data: latest } = await supabase.from('page_views').select('file_name').eq('user_id', userId).order('viewed_at', {ascending: false}).limit(1).single();
+        const fileName = latest?.file_name || '不明';
+
+        document.getElementById('m-company').textContent = profile.company_name;
+        document.getElementById('m-user').textContent = profile.full_name;
+        document.getElementById('m-contact').textContent = `${profile.email} / ${profile.phone}`;
+        document.getElementById('m-file').textContent = fileName;
+        document.getElementById('m-page').textContent = `${currentPage} ページ`;
+        
+        // 同期リンク作成
+        document.getElementById('m-sync-link').href = `view_site.html?id=${userId}&page=${currentPage}`;
+
+        // 上位3ページ取得 (SQLビューを使用)
+        const { data: ranking } = await supabase.from('page_stay_ranking').select('current_page, view_count').eq('user_id', userId).eq('file_name', fileName).order('view_count', {ascending: false}).limit(3);
+        
+        document.getElementById('m-hot-pages').innerHTML = ranking?.length 
+            ? ranking.map((r, i) => `<p>${i+1}位: ${r.current_page}ページ (${r.view_count}回)</p>`).join('')
+            : '分析データ不足';
+
+        document.getElementById('userModal').style.display = 'block';
+    };
+
+    async function loadHistory() {
+        const { data } = await supabase.from('page_views').select('*, profiles(*)').order('viewed_at', { ascending: false });
+        // ユーザーごとに最新のみ抽出
+        const unique = [];
+        const seen = new Set();
+        const companyFilter = document.getElementById('filter-company').value.toLowerCase();
+
+        for (const r of data) {
+            if (!seen.has(r.user_id) && r.profiles?.company_name.toLowerCase().includes(companyFilter)) {
+                unique.push(r);
+                seen.add(r.user_id);
+            }
+        }
+        document.getElementById('history-table').innerHTML = unique.map(r => `
+            <tr onclick="showUserDetail('${r.user_id}', '${r.current_page}')" style="cursor:pointer">
+                <td>${new Date(r.viewed_at).toLocaleTimeString()}</td>
+                <td>${r.profiles?.company_name}<br>${r.profiles?.full_name}</td>
+                <td>${r.file_name}</td>
+                <td>${r.current_page}P</td>
+            </tr>`).join('');
     }
 
     initPresence();
