@@ -2,66 +2,60 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>営業分析ダッシュボード Pro</title>
+    <title>営業分析ダッシュボード</title>
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --light: #ecf0f1; --success: #2ecc71; --hot: #e74c3c; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--light); margin: 0; padding: 0; }
-        .top-nav { position: sticky; top: 0; z-index: 1000; background: var(--dark); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; color: white; }
-        .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
+        :root { --primary: #3498db; --dark: #2c3e50; --light: #f4f7f6; --hot: #e74c3c; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--light); margin: 0; }
+        .nav { background: var(--dark); color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .container { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
         
-        /* フィルタエリア */
-        .filter-bar { background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .filter-bar input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 250px; }
+        .filter-section { margin-bottom: 25px; }
+        .filter-section input { padding: 12px; width: 300px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
 
-        .grid { display: grid; grid-template-columns: 400px 1fr; gap: 20px; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        
-        /* ユーザーバッジ */
+        .dashboard-grid { display: grid; grid-template-columns: 450px 1fr; gap: 30px; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+
         .user-badge { 
-            background: #fff; border-left: 5px solid var(--success); padding: 15px; margin-bottom: 12px; 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center;
-            cursor: pointer; transition: transform 0.1s;
+            background: white; border-left: 6px solid #2ecc71; padding: 15px; margin-bottom: 15px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-radius: 6px; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .user-badge:hover { transform: translateY(-2px); }
-        .user-badge.is-hot { border-left-color: var(--hot); background: #fff5f5; }
-        .page-indicator { background: var(--primary); color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
+        .user-badge:hover { transform: translateX(5px); background: #fafafa; }
+        .user-badge .info b { font-size: 1.1em; color: var(--dark); }
+        .user-badge .timer { color: var(--hot); font-size: 0.9em; font-weight: bold; margin-top: 5px; }
+        
+        .page-circle { background: var(--primary); color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2em; }
 
         /* モーダル */
-        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
-        .modal-content { background: white; margin: 5% auto; padding: 30px; border-radius: 12px; width: 550px; position: relative; }
-        .sync-link { display: inline-block; margin-top: 10px; padding: 8px 15px; background: var(--success); color: white; text-decoration: none; border-radius: 4px; font-weight: bold; }
-        .hot-list { margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px; }
-        
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; }
+        .modal-content { background: white; width: 550px; margin: 50px auto; padding: 30px; border-radius: 12px; position: relative; }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; }
+        .history-box { background: #fff3cd; padding: 20px; border-radius: 8px; margin-top: 20px; border-left: 5px solid #ffc107; }
+        .sync-btn { display: block; text-align: center; background: #2ecc71; color: white; padding: 12px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 15px; }
     </style>
 </head>
 <body>
 
-<nav class="top-nav">
-    <h2>Sales Intelligence Panel</h2>
-    <a href="index.html" style="color:white; text-decoration:none;">ポータルへ戻る</a>
-</nav>
+<div class="nav">
+    <h2>Real-time Sales Intelligence</h2>
+    <div id="status">システム稼働中</div>
+</div>
 
 <div class="container">
-    <div class="filter-bar">
-        <strong>🔍 フィルタ:</strong>
-        <input type="text" id="filter-company" placeholder="会社名で絞り込み..." oninput="handleFilter()">
-        <input type="text" id="filter-file" placeholder="PDF名で絞り込み..." oninput="handleFilter()">
+    <div class="filter-section">
+        <input type="text" id="filter-company" placeholder="会社名で絞り込み..." oninput="renderPresence()">
     </div>
 
-    <div class="grid">
-        <div class="section">
-            <h3>現在閲覧中 (<span id="user-count">0</span>)</h3>
+    <div class="dashboard-grid">
+        <div class="active-users">
+            <h3>現在閲覧中のユーザー (<span id="user-count">0</span>)</h3>
             <div id="presence-list"></div>
         </div>
-        <div class="section">
-            <h3>最新の顧客動向</h3>
+        <div class="recent-logs">
+            <h3>最近の動向</h3>
             <div class="card">
-                <table>
-                    <thead><tr><th>時刻</th><th>顧客</th><th>PDF</th><th>最終P</th></tr></thead>
-                    <tbody id="history-table"></tbody>
-                </table>
+                <table style="width:100%; border-collapse: collapse;" id="history-table">
+                    </table>
             </div>
         </div>
     </div>
@@ -69,20 +63,17 @@
 
 <div id="userModal" class="modal">
     <div class="modal-content">
+        <span class="close-btn" onclick="closeModal()">&times;</span>
         <h2 id="m-company">会社名</h2>
-        <p id="m-user" style="font-size: 1.2em; color: var(--primary); font-weight: bold;">名前</p>
-        <p>連絡先: <span id="m-contact"></span></p>
-        <hr>
-        <div id="m-analysis">
-            <p>現在閲覧中のPDF: <b id="m-file"></b></p>
-            <p>現在のページ: <b id="m-page"></b></p>
-            <a id="m-sync-link" href="#" target="_blank" class="sync-link">🔗 閲覧者と同じページを開く</a>
+        <p id="m-user" style="font-size: 1.2em; color: var(--primary); font-weight: bold;">氏名</p>
+        <p id="m-contact">連絡先</p>
+        
+        <div class="history-box">
+            <strong style="color: #856404;">🏆 過去30日の最長連続滞在TOP3</strong>
+            <div id="m-top-3" style="margin-top:15px;"></div>
         </div>
-        <div class="hot-list">
-            <strong>🔥 この資料の上位3滞在ページ</strong>
-            <div id="m-hot-pages"></div>
-        </div>
-        <button onclick="document.getElementById('userModal').style.display='none'" style="width:100%; margin-top:20px; padding:10px;">閉じる</button>
+
+        <a id="m-sync-link" href="#" target="_blank" class="sync-btn">🔗 同じページを並んで開く</a>
     </div>
 </div>
 
@@ -93,10 +84,9 @@
     const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let allOnlineUsers = [];
     const profileCache = new Map();
-    const lastPageCache = new Map(); // undefined対策用
-    const sessionStartTimes = new Map();
+    const pageStartTimeMap = new Map(); 
+    let currentOnlineUsers = [];
 
     async function getProfile(id) {
         if (profileCache.has(id)) return profileCache.get(id);
@@ -105,112 +95,87 @@
         return data;
     }
 
-    // フィルタリング処理
-    window.handleFilter = () => {
-        renderPresence(allOnlineUsers);
-        loadHistory();
-    };
-
-    // リアルタイム監視
     function initPresence() {
         const channel = supabase.channel('online-users');
         channel.on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
             const users = Object.values(state).flat();
-            // 重複排除
-            allOnlineUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
-            renderPresence(allOnlineUsers);
+            // 重複排除して保持
+            currentOnlineUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
+            renderPresence();
         }).subscribe();
     }
 
-    async function renderPresence(users) {
-        const companyFilter = document.getElementById('filter-company').value.toLowerCase();
-        const fileFilter = document.getElementById('filter-file').value.toLowerCase();
-        
+    async function renderPresence() {
         const list = document.getElementById('presence-list');
+        const filter = document.getElementById('filter-company').value.toLowerCase();
         let html = '';
         let count = 0;
 
-        for (const u of users) {
+        for (const u of currentOnlineUsers) {
             const profile = await getProfile(u.user_id);
-            if (!profile) continue;
+            if (!profile || !profile.company_name.toLowerCase().includes(filter)) continue;
 
-            // フィルタリング判定
-            if (!profile.company_name.toLowerCase().includes(companyFilter)) continue;
-            if (u.current_path && !u.current_path.toLowerCase().includes(fileFilter)) continue;
+            const pNum = u.current_page || 1;
+            const now = Date.now();
 
-            if (u.current_page) lastPageCache.set(u.user_id, u.current_page);
-            const displayPage = lastPageCache.get(u.user_id) || '1';
-            
-            if (!sessionStartTimes.has(u.user_id)) sessionStartTimes.set(u.user_id, Date.now());
-            const durationMin = Math.floor((Date.now() - sessionStartTimes.get(u.user_id)) / 60000);
+            // ページ遷移してからの連続滞在時間をフロントで計算
+            if (!pageStartTimeMap.has(u.user_id) || pageStartTimeMap.get(u.user_id).page !== pNum) {
+                pageStartTimeMap.set(u.user_id, { page: pNum, startTime: now });
+            }
+            const start = pageStartTimeMap.get(u.user_id).startTime;
+            const continuousMin = Math.floor((now - start) / 60000);
 
             count++;
             html += `
-                <div class="user-badge ${durationMin >= 5 ? 'is-hot' : ''}" onclick="showUserDetail('${u.user_id}', '${displayPage}')">
-                    <div class="user-info">
-                        <b>${profile.company_name}</b>
-                        <span>${profile.full_name} (${durationMin}分)</span>
+                <div class="user-badge" onclick="showDetail('${u.user_id}', ${pNum})">
+                    <div class="info">
+                        <b>${profile.company_name}</b><br>
+                        <span>${profile.full_name}</span>
+                        <div class="timer">🔥 現在 ${pNum}P を ${continuousMin}分間 連続閲覧中</div>
                     </div>
-                    <div class="page-indicator">${displayPage} P</div>
+                    <div class="page-circle">${pNum}</div>
                 </div>`;
         }
         document.getElementById('user-count').textContent = count;
-        list.innerHTML = html || '<p>該当するユーザーはいません</p>';
+        list.innerHTML = html || '<p style="color:#999">現在、閲覧中のユーザーはいません。</p>';
     }
 
-    // モーダル表示 (詳細 + 上位3ページ + 同期リンク)
-    window.showUserDetail = async (userId, currentPage) => {
+    window.showDetail = async (userId, currentPage) => {
         const profile = await getProfile(userId);
         
-        // 最新の閲覧PDFを取得
-        const { data: latest } = await supabase.from('page_views').select('file_name').eq('user_id', userId).order('viewed_at', {ascending: false}).limit(1).single();
-        const fileName = latest?.file_name || '不明';
+        // 過去30日の連続最長記録をDB(View)から取得
+        const { data: history } = await supabase
+            .from('top_3_stay_history')
+            .select('*')
+            .eq('user_id', userId)
+            .order('continuous_minutes', { ascending: false });
 
         document.getElementById('m-company').textContent = profile.company_name;
         document.getElementById('m-user').textContent = profile.full_name;
         document.getElementById('m-contact').textContent = `${profile.email} / ${profile.phone}`;
-        document.getElementById('m-file').textContent = fileName;
-        document.getElementById('m-page').textContent = `${currentPage} ページ`;
         
-        // 同期リンク作成
+        // 同期リンク
         document.getElementById('m-sync-link').href = `view_site.html?id=${userId}&page=${currentPage}`;
 
-        // 上位3ページ取得 (SQLビューを使用)
-        const { data: ranking } = await supabase.from('page_stay_ranking').select('current_page, view_count').eq('user_id', userId).eq('file_name', fileName).order('view_count', {ascending: false}).limit(3);
-        
-        document.getElementById('m-hot-pages').innerHTML = ranking?.length 
-            ? ranking.map((r, i) => `<p>${i+1}位: ${r.current_page}ページ (${r.view_count}回)</p>`).join('')
-            : '分析データ不足';
+        const top3Html = history?.length 
+            ? history.map((h, i) => `
+                <div style="margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:5px;">
+                    <span style="font-weight:bold;">${i+1}. ${h.file_name} (${h.current_page}P)</span><br>
+                    連続滞在: <span style="color:var(--hot); font-weight:bold;">${h.continuous_minutes}分</span>
+                    <span style="float:right; color:#999; font-size:0.8em;">${new Date(h.session_start).toLocaleDateString()}</span>
+                </div>`).join('')
+            : 'データがまだありません';
 
+        document.getElementById('m-top-3').innerHTML = top3Html;
         document.getElementById('userModal').style.display = 'block';
     };
 
-    async function loadHistory() {
-        const { data } = await supabase.from('page_views').select('*, profiles(*)').order('viewed_at', { ascending: false });
-        // ユーザーごとに最新のみ抽出
-        const unique = [];
-        const seen = new Set();
-        const companyFilter = document.getElementById('filter-company').value.toLowerCase();
+    window.closeModal = () => { document.getElementById('userModal').style.display = 'none'; };
 
-        for (const r of data) {
-            if (!seen.has(r.user_id) && r.profiles?.company_name.toLowerCase().includes(companyFilter)) {
-                unique.push(r);
-                seen.add(r.user_id);
-            }
-        }
-        document.getElementById('history-table').innerHTML = unique.map(r => `
-            <tr onclick="showUserDetail('${r.user_id}', '${r.current_page}')" style="cursor:pointer">
-                <td>${new Date(r.viewed_at).toLocaleTimeString()}</td>
-                <td>${r.profiles?.company_name}<br>${r.profiles?.full_name}</td>
-                <td>${r.file_name}</td>
-                <td>${r.current_page}P</td>
-            </tr>`).join('');
-    }
-
+    // 1分ごとに表示（タイマー）を更新
+    setInterval(renderPresence, 60000);
     initPresence();
-    loadHistory();
-    setInterval(loadHistory, 10000);
 </script>
 </body>
 </html>
