@@ -2,13 +2,15 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>PDF資料閲覧</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資料閲覧システム</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { margin: 0; background: #525659; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
-        .toolbar { background: #2c3e50; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        body { margin: 0; background: #525659; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; }
+        .toolbar { background: #2c3e50; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .pager { display: flex; align-items: center; gap: 15px; }
-        button { background: #3498db; border: none; color: white; padding: 8px 15px; cursor: pointer; border-radius: 4px; }
+        button { background: #3498db; border: none; color: white; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        button:disabled { background: #7f8c8d; }
         #pdf-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
         canvas { background: white; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
     </style>
@@ -32,7 +34,7 @@
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-    // --- 設定 ---
+    // --- 設定 (自分のものに書き換えてください) ---
     const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -42,133 +44,77 @@
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
     
-    const urlParams = new URLSearchParams(window.location.search);
-    // Cookie取得の正規表現をより確実に
-    const getCookie = (name) => {
-        const r = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-        return r ? r.pop() : '';
-    };
-    const viewerId = urlParams.get('id') || getCookie('viewer_uuid');
+    // IDの取得 (URLパラメータ または Cookie)
+    const viewerId = new URLSearchParams(window.location.search).get('id') || document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
     async function init() {
-        console.log("初期化開始: viewerId =", viewerId);
+        if (!viewerId) { window.location.href = 'entry.html'; return; }
 
-        if (!viewerId) {
-            console.error("IDが見つかりません。登録画面へ戻ります。");
-            window.location.href = 'entry.html';
-            return;
-        }
+        // プロファイル確認
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
+        if (profile) document.getElementById('welcome-msg').textContent = `${profile.company_name} ${profile.full_name} 様`;
 
-        // 1. プロファイル取得
+        // PDF読み込み
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
         try {
-            const { data: profile, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', viewerId)
-                .single();
-
-            if (error) throw error;
-            if (profile) {
-                document.getElementById('welcome-msg').textContent = `${profile.company_name} 様`;
-                console.log("プロファイル取得成功:", profile);
-            }
-        } catch (err) {
-            console.error("プロファイル取得エラー:", err.message);
-            document.getElementById('welcome-msg').textContent = "ゲスト様";
-        }
-
-        // 2. PDF読み込み
-        try {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-            const loadingTask = pdfjsLib.getDocument(PDF_URL);
-            pdfDoc = await loadingTask.promise;
-            
+            pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;
-            console.log("PDF読み込み成功: 全", pdfDoc.numPages, "ページ");
-
-            // 同期リンク（?page=X）への対応
-            const startPage = parseInt(urlParams.get('page')) || 1;
+            
+            // 同期リンク（?page=X）対応
+            const startPage = parseInt(new URLSearchParams(window.location.search).get('page')) || 1;
             pageNum = Math.min(Math.max(startPage, 1), pdfDoc.numPages);
 
             renderPage(pageNum);
             startPresence();
-            logToDB(pageNum); // 初回ログ送信
-        } catch (err) {
-            console.error("PDF読み込みエラー:", err.message);
-            alert("PDFの読み込みに失敗しました。パスを確認してください。");
+        } catch (e) {
+            console.error("PDF Load Error:", e);
+            alert("PDFが読み込めません。パスを確認してください。");
         }
     }
 
-    // DBへのログ送信 (エラーハンドリング追加)
     async function logToDB(p) {
-        console.log("DBログ送信中... Page:", p);
-        const { error } = await supabase
-            .from('page_views')
-            .insert([{ 
-                user_id: viewerId, 
-                file_name: PDF_URL.split('/').pop(), 
-                current_page: p 
-            }]);
-        
-        if (error) {
-            console.error("DB送信エラー:", error.message);
-        } else {
-            console.log("DB送信成功");
-        }
+        await supabase.from('page_views').insert([{ 
+            user_id: viewerId, 
+            file_name: PDF_URL.split('/').pop(), 
+            current_page: p 
+        }]);
     }
 
-    let channel;
     function startPresence() {
-        channel = supabase.channel('online-users');
+        const channel = supabase.channel('online-users');
         const track = () => {
-            if (!pageNum) return;
+            // リアルタイム通信で位置を送信
             channel.track({ 
                 user_id: viewerId, 
                 current_page: pageNum, 
                 current_path: PDF_URL.split('/').pop() 
             });
-            console.log("Presence送信: Page", pageNum);
+            // 滞在時間集計用にDBへ記録
+            logToDB(pageNum);
         };
-        channel.subscribe(status => {
-            if (status === 'SUBSCRIBED') track();
-        });
-        setInterval(track, 30000);
+        channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
+        setInterval(track, 30000); // 30秒間隔
         window.forceTrack = track;
     }
 
     function renderPage(num) {
-        if (isRendering) return;
         isRendering = true;
         pdfDoc.getPage(num).then(page => {
             const viewport = page.getViewport({ scale: 1.5 });
             canvas.height = viewport.height;
             canvas.width = viewport.width;
-            const renderContext = { canvasContext: ctx, viewport: viewport };
-            
-            page.render(renderContext).promise.then(() => {
+            page.render({ canvasContext: ctx, viewport: viewport }).promise.then(() => {
                 isRendering = false;
                 document.getElementById('page-num').textContent = num;
             });
         });
     }
 
-    document.getElementById('prev-btn').onclick = () => {
-        if (pageNum > 1 && !isRendering) {
-            pageNum--;
-            update();
-        }
-    };
-
-    document.getElementById('next-btn').onclick = () => {
-        if (pageNum < pdfDoc.numPages && !isRendering) {
-            pageNum++;
-            update();
-        }
-    };
+    document.getElementById('prev-btn').onclick = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
+    document.getElementById('next-btn').onclick = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
 
     function update() {
         renderPage(pageNum);
-        logToDB(pageNum);
         if (window.forceTrack) window.forceTrack();
     }
 
@@ -176,4 +122,3 @@
 </script>
 </body>
 </html>
-
