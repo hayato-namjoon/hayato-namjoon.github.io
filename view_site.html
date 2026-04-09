@@ -11,7 +11,6 @@
         .pager { display: flex; align-items: center; gap: 15px; }
         button { background: #3498db; border: none; color: white; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button:disabled { background: #7f8c8d; }
-        .back-btn { background: #95a5a6; }
         #pdf-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
         canvas { background: white; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
     </style>
@@ -19,10 +18,7 @@
 <body>
 
 <div class="toolbar">
-    <div>
-        <button class="back-btn" onclick="location.href='choice_catalog.html'">← 戻る</button>
-        <span id="welcome-msg" style="margin-left: 10px;">認証中...</span>
-    </div>
+    <div id="welcome-msg">認証中...</div>
     <div class="pager">
         <button id="prev-btn">前へ</button>
         <span>Page: <span id="page-num">1</span> / <span id="page-count">-</span></span>
@@ -38,41 +34,33 @@
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-    // --- 設定 (プロジェクトに合わせて書き換えてください) ---
+    // --- 設定 (自分のものに書き換えてください) ---
     const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-    
-    // カタログ1ならこれ、カタログ2なら './test_page_check_file2.pdf' 等に書き換え
-    const PDF_URL = './cataloge.pdf'; 
+    const PDF_URL = './test_page_check_file.pdf'; 
 
     let pdfDoc = null, pageNum = 1, isRendering = false;
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
     
+    // IDの取得 (URLパラメータ または Cookie)
     const viewerId = new URLSearchParams(window.location.search).get('id') || document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
     async function init() {
-        // IDがない場合は登録画面へ
         if (!viewerId) { window.location.href = 'entry.html'; return; }
 
-        // プロファイル確認（管理者がリセットした場合はここでデータが取れなくなる）
-        const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
-        
-        if (error || !profile) { 
-            console.error("Authentication failed or user deleted.");
-            window.location.href = 'entry.html'; 
-            return; 
-        }
-        
-        document.getElementById('welcome-msg').textContent = `${profile.company_name} ${profile.full_name} 様`;
+        // プロファイル確認
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
+        if (profile) document.getElementById('welcome-msg').textContent = `${profile.company_name} ${profile.full_name} 様`;
 
-        // PDF読み込み設定
+        // PDF読み込み
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
         try {
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;
             
+            // 同期リンク（?page=X）対応
             const startPage = parseInt(new URLSearchParams(window.location.search).get('page')) || 1;
             pageNum = Math.min(Math.max(startPage, 1), pdfDoc.numPages);
 
@@ -80,39 +68,32 @@
             startPresence();
         } catch (e) {
             console.error("PDF Load Error:", e);
-            alert("PDFが読み込めません。ファイルパスを確認してください。");
+            alert("PDFが読み込めません。パスを確認してください。");
         }
     }
 
     async function logToDB(p) {
-        // DBへの生存記録（管理者がリセットした後はこのリクエストも失敗する）
-        const { error } = await supabase.from('page_views').insert([{ 
+        await supabase.from('page_views').insert([{ 
             user_id: viewerId, 
             file_name: PDF_URL.split('/').pop(), 
             current_page: p 
         }]);
-
-        // もしDB記録時にエラー（ユーザー不在等）が出たら追い出し
-        if (error) {
-            console.log("Session lost. Redirecting...");
-            window.location.href = 'entry.html';
-        }
     }
 
     function startPresence() {
         const channel = supabase.channel('online-users');
         const track = () => {
-            // リアルタイムプレゼンス
+            // リアルタイム通信で位置を送信
             channel.track({ 
                 user_id: viewerId, 
                 current_page: pageNum, 
                 current_path: PDF_URL.split('/').pop() 
             });
-            // ログ記録
+            // 滞在時間集計用にDBへ記録
             logToDB(pageNum);
         };
         channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
-        setInterval(track, 30000); // 30秒ごとに生存確認
+        setInterval(track, 30000); // 30秒間隔
         window.forceTrack = track;
     }
 
@@ -134,7 +115,6 @@
 
     function update() {
         renderPage(pageNum);
-        // ページ遷移のたびに即座に位置を更新
         if (window.forceTrack) window.forceTrack();
     }
 
@@ -142,3 +122,4 @@
 </script>
 </body>
 </html>
+
