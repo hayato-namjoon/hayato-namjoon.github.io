@@ -78,7 +78,7 @@
         if (uuid) {
             // すでにIDがある場合は、登録済みか確認（念のため）して転送
             console.log("既存ユーザーを発見:", uuid);
-            window.location.href = `view_site.html?id=${uuid}`;
+            window.location.href = `choice_catalog.html`;
         } else {
             // 新規ユーザーならフォームを表示
             document.getElementById('loading-screen').style.display = 'none';
