@@ -88,39 +88,6 @@
     const pageStartTimeMap = new Map(); 
     let currentOnlineUsers = [];
 
-    // ...初期化...
-    const pageStartTimeMap = new Map();
-
-    // 初期化ボタン（デバッグ用）
-    window.resetAllUsers = async () => {
-        if (!confirm("全ユーザー情報をリセットしますか？")) return;
-        await supabase.from('profiles').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        alert("リセット完了");
-        location.reload();
-    };
-
-    // リアルタイム監視
-    async function renderPresence(users) {
-        let html = '';
-        for (const u of users) {
-            const profile = await getProfile(u.user_id);
-            if (!profile) continue;
-            const pNum = u.current_page || 1;
-            const now = Date.now();
-            if (!pageStartTimeMap.has(u.user_id) || pageStartTimeMap.get(u.user_id).page !== pNum) {
-                pageStartTimeMap.set(u.user_id, { page: pNum, startTime: now });
-            }
-            const diffMin = Math.floor((now - pageStartTimeMap.get(u.user_id).startTime) / 60000);
-            
-            html += `
-                <div class="user-badge" onclick="showDetail('${u.user_id}')">
-                    <b>${profile.company_name}</b><br>${profile.full_name}<br>
-                    <span style="color:red">🔥 ${pNum}P を ${diffMin}分 連続閲覧中</span>
-                    (${u.current_path})
-                </div>`;
-        }
-        document.getElementById('presence-list').innerHTML = html;
-
     async function getProfile(id) {
         if (profileCache.has(id)) return profileCache.get(id);
         const { data } = await supabase.from('profiles').select('*').eq('id', id).single();
