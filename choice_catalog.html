@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>製品カタログ選択</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; width: 350px; }
+        .btn { display: block; background: #3498db; color: white; padding: 15px; margin: 15px 0; text-decoration: none; border-radius: 8px; font-weight: bold; }
+        .btn-sub { background: #95a5a6; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2 id="u-name">製品カタログ</h2>
+    <a href="view_site.html" class="btn">📄 製品カタログ 1</a>
+    <a href="view_site2.html" class="btn">📄 製品カタログ 2</a>
+    <a href="entry.html" class="btn btn-sub">登録情報の変更</a>
+</div>
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+    const supabase = createClient('URL', 'KEY');
+    const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
+    if (!viewerId) window.location.href = 'entry.html';
+    const { data } = await supabase.from('profiles').select('full_name').eq('id', viewerId).single();
+    if (!data) window.location.href = 'entry.html';
+    else document.getElementById('u-name').textContent = `${data.full_name} 様`;
+</script>
+</body>
+</html>
