@@ -43,6 +43,13 @@
     let pdfDoc = null, pageNum = 1, isRendering = false;
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
+
+    // 両ファイル共通の init 関数内 (削除ガード)
+    const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
+    if (error || !profile) {
+        window.location.href = 'entry.html'; // 管理者がリセットしたらここへ
+        return;
+    }
     
     // IDの取得 (URLパラメータ または Cookie)
     const viewerId = new URLSearchParams(window.location.search).get('id') || document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
