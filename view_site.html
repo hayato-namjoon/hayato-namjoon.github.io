@@ -174,9 +174,39 @@
     });
 }
 
-    // ボタン操作
-    document.getElementById('prev-btn').onclick = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
-    document.getElementById('next-btn').onclick = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
+    // --- ページめくり処理の共通化 ---
+    const goNext = () => {
+        if (pageNum < pdfDoc.numPages && !isRendering) {
+            pageNum++;
+            update();
+        }
+    };
+    
+    const goPrev = () => {
+        if (pageNum > 1 && !isRendering) {
+            pageNum--;
+            update();
+        }
+    };
+    
+    // --- Canvasクリックによるページ遷移機能を追加 ---
+    canvas.addEventListener('click', (e) => {
+        // Canvas内でのクリック位置を取得
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left; // クリックしたX座標
+        const canvasWidth = rect.width;
+    
+        // 右側30%をクリックしたら次へ、左側30%をクリックしたら前へ
+        if (x > canvasWidth * 0.7) {
+            goNext();
+        } else if (x < canvasWidth * 0.3) {
+            goPrev();
+        }
+    });
+    
+    // --- 既存のボタンイベントも共通関数に紐付け ---
+    document.getElementById('prev-btn').onclick = goPrev;
+    document.getElementById('next-btn').onclick = goNext;
 
     // 【機能：拡大縮小イベント】
     document.getElementById('zoom-in').onclick = () => {
