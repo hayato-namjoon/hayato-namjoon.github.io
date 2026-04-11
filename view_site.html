@@ -83,6 +83,13 @@
             
             const startPage = parseInt(new URLSearchParams(window.location.search).get('page')) || 1;
             pageNum = Math.min(Math.max(startPage, 1), pdfDoc.numPages);
+            
+            // --- ここで初期ストレッチ表示の倍率を計算 ---
+            const firstPage = await pdfDoc.getPage(1);
+            const unscaledViewport = firstPage.getViewport({ scale: 1.0 });
+            // コンテナの幅（余白40px分を引く）をPDFの本来の幅で割る
+            scale = (container.clientWidth - 60) / unscaledViewport.width;
+            // ---------------------------------------
 
             renderPage(pageNum);
             startPresence();
