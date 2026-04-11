@@ -44,7 +44,7 @@
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     
     // カタログ1ならこれ、カタログ2なら './test_page_check_file2.pdf' 等に書き換え
-    const PDF_URL = './test_page_check_file.pdf'; 
+    const PDF_URL = './catalog_2.pdf'; 
 
     let pdfDoc = null, pageNum = 1, isRendering = false;
     const canvas = document.getElementById('pdf-render');
