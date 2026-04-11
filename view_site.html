@@ -90,7 +90,7 @@
             // PDFの読み込み完了を待つ
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;            
-            updateWithReset();
+            await　updateWithReset);
             startPresence();
         } catch (e) {
             console.error("PDF Load Error:", e);
@@ -101,14 +101,11 @@
     // --- 追加：画面に収まる倍率を計算する関数 ---
     async function getFitScale(page) {
         if (!container) return 1.0;
-        
         const unscaledViewport = page.getViewport({ scale: 1.0 });
         const availableWidth = container.clientWidth - 40;
         const availableHeight = container.clientHeight - 40;
-
         const scaleW = availableWidth / unscaledViewport.width;
         const scaleH = availableHeight / unscaledViewport.height;
-
         // 幅と高さのうち、より小さい方の倍率を返す
         return Math.min(scaleW, scaleH);
     }
