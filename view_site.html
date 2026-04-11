@@ -12,7 +12,15 @@
         button { background: #3498db; border: none; color: white; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button:disabled { background: #7f8c8d; }
         .back-btn { background: #95a5a6; }
-        #pdf-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
+       #pdf-container { 
+            flex-grow: 1; 
+            overflow: auto; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; /* 縦方向も中央寄せにする */
+            padding: 20px; 
+            background: #525659; 
+        }
         canvas { 
             background: white; 
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
@@ -89,11 +97,19 @@
             
             // 計算。containerが取得できていることを確認
             if (container) {
-                scale = (container.clientHigh - 60) / unscaledViewport.High;
-            } else {
-                scale = 1.2; // 予備の固定値
-            }
+                // 表示領域のサイズを取得（余白を考慮して少し引く）
+                const availableWidth = container.clientWidth - 40;
+                const availableHeight = container.clientHeight - 40;
 
+                // 「幅に合わせた場合の倍率」と「高さに合わせた場合の倍率」を計算
+                const scaleW = availableWidth / unscaledViewport.width;
+                const scaleH = availableHeight / unscaledViewport.height;
+
+                // 小さい方の倍率を採用することで、縦横両方が画面に収まる
+                scale = Math.min(scaleW, scaleH);
+            } else {
+                scale = 1.0;
+            }
             renderPage(pageNum);
             startPresence();
         } catch (e) {
