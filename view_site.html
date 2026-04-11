@@ -13,7 +13,11 @@
         button:disabled { background: #7f8c8d; }
         .back-btn { background: #95a5a6; }
         #pdf-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
-        canvas { background: white; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        canvas { 
+            background: white; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            /* もしここに width: 100% や width: 800px があったら削除してください */
+        }
     </style>
 </head>
 <body>
@@ -118,35 +122,46 @@
     }
 
     
+    let currentRenderTask = null; // 実行中の描画タスクを保持
     function renderPage(num) {
-    if (isRendering) return; // 描画中の場合は多重実行を防ぐ
-    isRendering = true;
+        // 1. 実行中の描画があればキャンセル（重要！）
+        if (currentRenderTask) {
+            currentRenderTask.cancel();
+        }
 
+    isRendering = true;
     pdfDoc.getPage(num).then(page => {
         const viewport = page.getViewport({ scale: scale });
-        
-        // 重要：キャンバスのサイズを明示的に更新（これでリセットがかかる）
+
+        // 2. Canvasの物理サイズ（解像度）を更新
         canvas.height = viewport.height;
         canvas.width = viewport.width;
 
-        // 以前の描画内容をクリア
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // 3. ブラウザ上の表示サイズも倍率に合わせて更新する（CSSの干渉を防ぐ）
+        // これを追加することで、実際に見た目の大きさが変わります
+        canvas.style.width = viewport.width + "px";
+        canvas.style.height = viewport.height + "px";
 
         const renderContext = {
             canvasContext: ctx,
             viewport: viewport
         };
 
-        // 描画実行
-        const renderTask = page.render(renderContext);
-        
-        renderTask.promise.then(() => {
+        // 4. 描画タスクを開始
+        currentRenderTask = page.render(renderContext);
+
+        currentRenderTask.promise.then(() => {
             isRendering = false;
+            currentRenderTask = null;
             document.getElementById('page-num').textContent = num;
-            // 拡大率のパーセント表示を更新
+            // 拡大率表示を更新
             document.getElementById('zoom-percent').textContent = `${Math.round(scale / 1.5 * 100)}%`;
         }).catch(err => {
-            console.error("Render error:", err);
+            if (err.name === 'RenderingCancelledException') {
+                console.log("描画がキャンセルされました（次の操作が優先されました）");
+            } else {
+                console.error("Render error:", err);
+            }
             isRendering = false;
         });
     });
