@@ -89,33 +89,28 @@
         try {
             // PDFの読み込み完了を待つ
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
-            document.getElementById('page-count').textContent = pdfDoc.numPages;
-            
-            // 初回の倍率計算（コンテナの幅に合わせる）
-            const firstPage = await pdfDoc.getPage(1);
-            const unscaledViewport = firstPage.getViewport({ scale: 1.0 });
-            
-            // 計算。containerが取得できていることを確認
-            if (container) {
-                // 表示領域のサイズを取得（余白を考慮して少し引く）
-                const availableWidth = container.clientWidth - 40;
-                const availableHeight = container.clientHeight - 40;
-
-                // 「幅に合わせた場合の倍率」と「高さに合わせた場合の倍率」を計算
-                const scaleW = availableWidth / unscaledViewport.width;
-                const scaleH = availableHeight / unscaledViewport.height;
-
-                // 小さい方の倍率を採用することで、縦横両方が画面に収まる
-                scale = Math.min(scaleW, scaleH);
-            } else {
-                scale = 1.0;
-            }
+            document.getElementById('page-count').textContent = pdfDoc.numPages;            
             renderPage(pageNum);
             startPresence();
         } catch (e) {
             console.error("PDF Load Error:", e);
             alert("PDFが読み込めません。ファイルパスを確認してください。");
         }
+    }
+
+    // --- 追加：画面に収まる倍率を計算する関数 ---
+    async function getFitScale(page) {
+        if (!container) return 1.0;
+        
+        const unscaledViewport = page.getViewport({ scale: 1.0 });
+        const availableWidth = container.clientWidth - 40;
+        const availableHeight = container.clientHeight - 40;
+
+        const scaleW = availableWidth / unscaledViewport.width;
+        const scaleH = availableHeight / unscaledViewport.height;
+
+        // 幅と高さのうち、より小さい方の倍率を返す
+        return Math.min(scaleW, scaleH);
     }
 
     // 描画関数
@@ -125,6 +120,12 @@
         }
 
         isRendering = true;
+
+        // ページを取得
+        const page = await pdfDoc.getPage(num);
+        // ★ここでページごとに最適な倍率を計算し直す
+        scale = await getFitScale(page);
+        
         pdfDoc.getPage(num).then(page => {
             const viewport = page.getViewport({ scale: scale });
 
