@@ -126,7 +126,7 @@
         // ★ここでページごとに最適な倍率を計算し直す
         scale = await getFitScale(page);
         
-        pdfDoc.getPage(num).then(page => {
+        //pdfDoc.getPage(num).then(page => {
             const viewport = page.getViewport({ scale: scale });
 
             canvas.height = viewport.height;
@@ -149,7 +149,7 @@
                 }
                 isRendering = false;
             });
-        });
+        //});
     }
 
     // ページめくり
