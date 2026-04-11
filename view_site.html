@@ -81,9 +81,6 @@
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;
             
-            const startPage = parseInt(new URLSearchParams(window.location.search).get('page')) || 1;
-            pageNum = Math.min(Math.max(startPage, 1), pdfDoc.numPages);
-            
             // --- ここで初期ストレッチ表示の倍率を計算 ---
             const firstPage = await pdfDoc.getPage(1);
             const unscaledViewport = firstPage.getViewport({ scale: 1.0 });
