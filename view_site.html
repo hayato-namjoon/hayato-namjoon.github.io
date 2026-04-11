@@ -8,8 +8,8 @@
     <style>
         body { margin: 0; background: #525659; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; }
         .toolbar { background: #2c3e50; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); z-index: 100; }
-        .pager, .zoom-controls { display: flex; align-items: center; gap: 10px; }
-        button { background: #3498db; border: none; color: white; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .pager, .zoom-controls { display: flex; align-items: center; gap: 15px; }
+        button { background: #3498db; border: none; color: white; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button:disabled { background: #7f8c8d; }
         .back-btn { background: #95a5a6; }
         #pdf-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
@@ -20,10 +20,10 @@
 
 <div class="toolbar">
     <div>
-        <button class="back-btn" onclick="location.href='choice_catalog.html'">← カタログ選択へ</button>
+        <button class="back-btn" onclick="location.href='choice_catalog.html'">← 戻る</button>
         <span id="welcome-msg" style="margin-left: 10px;">認証中...</span>
     </div>
-    
+
     <div class="zoom-controls">
         <button id="zoom-out">－</button>
         <span id="zoom-percent">100%</span>
@@ -45,82 +45,59 @@
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
     // --- 設定 ---
-    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; // あなたのURLを記入
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; // あなたのキーを記入
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     const PDF_URL = './catalog_1.pdf'; 
 
-    let pdfDoc = null;
-    let pageNum = 1;
+    let pdfDoc = null, pageNum = 1, isRendering = false;
     let scale = 1.5; // 初期の拡大率
-    let isRendering = false;
-    
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
     
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
     async function init() {
-        // 1. Cookieの存在チェック
-        if (!viewerId) { 
-            console.log("No cookie found.");
-            window.location.href = 'entry.html'; 
-            return; 
-        }
+        if (!viewerId) { window.location.href = 'entry.html'; return; }
 
-        // 2. データベースとの照合認証
+        // 【機能：認証失敗時の強制遷移】
         const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
         
-        if (error || !profile) { 
-            console.error("Auth failed: User not in database.");
-            // 認証失敗時にCookieを削除して遷移（任意）
-            document.cookie = "viewer_uuid=; max-age=0; path=/"; 
-            window.location.href = 'entry.html'; 
-            return; 
+        // 管理画面で削除された場合、profileがnullになるので追い出す
+        if (error || !profile) {
+            console.error("Authentication failed: User deleted.");
+            window.location.href = 'entry.html';
+            return;
         }
-        
-        document.getElementById('welcome-msg').textContent = `${profile.full_name} 様`;
 
-        // PDFの読み込み
+        document.getElementById('welcome-msg').textContent = `${profile.company_name} ${profile.full_name} 様`;
+
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
         try {
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;
+            
+            const startPage = parseInt(new URLSearchParams(window.location.search).get('page')) || 1;
+            pageNum = Math.min(Math.max(startPage, 1), pdfDoc.numPages);
+
             renderPage(pageNum);
             startPresence();
         } catch (e) {
             console.error("PDF Load Error:", e);
+            alert("PDFが読み込めません。");
         }
     }
 
-    // 描画処理
-    function renderPage(num) {
-        isRendering = true;
-        pdfDoc.getPage(num).then(page => {
-            const viewport = page.getViewport({ scale: scale });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-
-            const renderContext = { canvasContext: ctx, viewport: viewport };
-            page.render(renderContext).promise.then(() => {
-                isRendering = false;
-                document.getElementById('page-num').textContent = num;
-                document.getElementById('zoom-percent').textContent = `${Math.round(scale * 100 / 1.5)}%`;
-            });
-        });
-    }
-
-    // 認証維持とログ送信
     async function logToDB(p) {
+        // 【機能：ログ送信時の認証チェック】
         const { error } = await supabase.from('page_views').insert([{ 
             user_id: viewerId, 
             file_name: PDF_URL.split('/').pop(), 
             current_page: p 
         }]);
 
-        // ログ送信に失敗した場合（管理者がDBからユーザーを消した場合など）
+        // 送信に失敗（＝ユーザーが消されている）したら追い出し
         if (error) {
-            console.error("Log failed. User may have been deleted.");
             window.location.href = 'entry.html';
         }
     }
@@ -128,19 +105,39 @@
     function startPresence() {
         const channel = supabase.channel('online-users');
         const track = () => {
-            channel.track({ user_id: viewerId, current_page: pageNum, current_path: PDF_URL.split('/').pop() });
+            channel.track({ 
+                user_id: viewerId, 
+                current_page: pageNum, 
+                current_path: PDF_URL.split('/').pop() 
+            });
             logToDB(pageNum);
         };
         channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
-        setInterval(track, 30000);
+        setInterval(track, 30000); 
         window.forceTrack = track;
     }
 
-    // イベントリスナー
+    function renderPage(num) {
+        isRendering = true;
+        pdfDoc.getPage(num).then(page => {
+            // scale 変数を使用して描画
+            const viewport = page.getViewport({ scale: scale });
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            page.render({ canvasContext: ctx, viewport: viewport }).promise.then(() => {
+                isRendering = false;
+                document.getElementById('page-num').textContent = num;
+                // 表示上の%を更新 (1.5を100%として計算)
+                document.getElementById('zoom-percent').textContent = `${Math.round(scale / 1.5 * 100)}%`;
+            });
+        });
+    }
+
+    // ボタン操作
     document.getElementById('prev-btn').onclick = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
     document.getElementById('next-btn').onclick = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
 
-    // 拡大・縮小
+    // 【機能：拡大縮小イベント】
     document.getElementById('zoom-in').onclick = () => {
         scale += 0.25;
         renderPage(pageNum);
