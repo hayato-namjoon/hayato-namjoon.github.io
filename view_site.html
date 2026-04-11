@@ -174,6 +174,19 @@
     });
 }
 
+
+    // 【機能：拡大縮小イベント】
+    document.getElementById('zoom-in').onclick = () => {
+        scale += 0.25;
+        renderPage(pageNum);
+    };
+    document.getElementById('zoom-out').onclick = () => {
+        if (scale > 0.5) {
+            scale -= 0.25;
+            renderPage(pageNum);
+        }
+    };
+
     // --- ページめくり関数 ---
     const goNext = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
     const goPrev = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
@@ -191,28 +204,11 @@
     document.getElementById('zoom-in').onclick = () => { scale *= 1.2; renderPage(pageNum); };
     document.getElementById('zoom-out').onclick = () => { scale /= 1.2; renderPage(pageNum); };
 
+    
     function update() {
         renderPage(pageNum);
         if (window.forceTrack) window.forceTrack();
         container.scrollTop = 0; // ページをめくった時に上端に戻す
-    }
-
-
-    // 【機能：拡大縮小イベント】
-    document.getElementById('zoom-in').onclick = () => {
-        scale += 0.25;
-        renderPage(pageNum);
-    };
-    document.getElementById('zoom-out').onclick = () => {
-        if (scale > 0.5) {
-            scale -= 0.25;
-            renderPage(pageNum);
-        }
-    };
-
-    function update() {
-        renderPage(pageNum);
-        if (window.forceTrack) window.forceTrack();
     }
 
     init();
