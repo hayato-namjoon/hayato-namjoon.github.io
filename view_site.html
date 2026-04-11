@@ -174,39 +174,29 @@
     });
 }
 
-    // --- ページめくり処理の共通化 ---
-    const goNext = () => {
-        if (pageNum < pdfDoc.numPages && !isRendering) {
-            pageNum++;
-            update();
-        }
-    };
-    
-    const goPrev = () => {
-        if (pageNum > 1 && !isRendering) {
-            pageNum--;
-            update();
-        }
-    };
-    
-    // --- Canvasクリックによるページ遷移機能を追加 ---
+    // --- ページめくり関数 ---
+    const goNext = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
+    const goPrev = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
+
+    // --- クリック判定 ---
     canvas.addEventListener('click', (e) => {
-        // Canvas内でのクリック位置を取得
         const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left; // クリックしたX座標
-        const canvasWidth = rect.width;
-    
-        // 右側30%をクリックしたら次へ、左側30%をクリックしたら前へ
-        if (x > canvasWidth * 0.7) {
-            goNext();
-        } else if (x < canvasWidth * 0.3) {
-            goPrev();
-        }
+        const x = e.clientX - rect.left;
+        if (x > rect.width * 0.7) goNext(); // 右側30%
+        else if (x < rect.width * 0.3) goPrev(); // 左側30%
     });
-    
-    // --- 既存のボタンイベントも共通関数に紐付け ---
+
     document.getElementById('prev-btn').onclick = goPrev;
     document.getElementById('next-btn').onclick = goNext;
+    document.getElementById('zoom-in').onclick = () => { scale *= 1.2; renderPage(pageNum); };
+    document.getElementById('zoom-out').onclick = () => { scale /= 1.2; renderPage(pageNum); };
+
+    function update() {
+        renderPage(pageNum);
+        if (window.forceTrack) window.forceTrack();
+        container.scrollTop = 0; // ページをめくった時に上端に戻す
+    }
+
 
     // 【機能：拡大縮小イベント】
     document.getElementById('zoom-in').onclick = () => {
