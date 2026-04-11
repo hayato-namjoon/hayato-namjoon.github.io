@@ -117,21 +117,40 @@
         window.forceTrack = track;
     }
 
+    
     function renderPage(num) {
-        isRendering = true;
-        pdfDoc.getPage(num).then(page => {
-            // scale 変数を使用して描画
-            const viewport = page.getViewport({ scale: scale });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            page.render({ canvasContext: ctx, viewport: viewport }).promise.then(() => {
-                isRendering = false;
-                document.getElementById('page-num').textContent = num;
-                // 表示上の%を更新 (1.5を100%として計算)
-                document.getElementById('zoom-percent').textContent = `${Math.round(scale / 1.5 * 100)}%`;
-            });
+    if (isRendering) return; // 描画中の場合は多重実行を防ぐ
+    isRendering = true;
+
+    pdfDoc.getPage(num).then(page => {
+        const viewport = page.getViewport({ scale: scale });
+        
+        // 重要：キャンバスのサイズを明示的に更新（これでリセットがかかる）
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        // 以前の描画内容をクリア
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const renderContext = {
+            canvasContext: ctx,
+            viewport: viewport
+        };
+
+        // 描画実行
+        const renderTask = page.render(renderContext);
+        
+        renderTask.promise.then(() => {
+            isRendering = false;
+            document.getElementById('page-num').textContent = num;
+            // 拡大率のパーセント表示を更新
+            document.getElementById('zoom-percent').textContent = `${Math.round(scale / 1.5 * 100)}%`;
+        }).catch(err => {
+            console.error("Render error:", err);
+            isRendering = false;
         });
-    }
+    });
+}
 
     // ボタン操作
     document.getElementById('prev-btn').onclick = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
