@@ -90,7 +90,7 @@
             // PDFの読み込み完了を待つ
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;            
-            renderPage(pageNum);
+            updateWithReset();
             startPresence();
         } catch (e) {
             console.error("PDF Load Error:", e);
@@ -114,67 +114,70 @@
     }
 
     // 描画関数
-    async function renderPage(num) {
+    // --- 描画関数：今の scale で描画するだけ ---
+    function renderPage(num) {
         if (currentRenderTask) {
             currentRenderTask.cancel();
         }
 
         isRendering = true;
-        
-        // ページを取得
-        const page = await pdfDoc.getPage(num);
+        pdfDoc.getPage(num).then(page => {
+            const viewport = page.getViewport({ scale: scale });
 
-        // ★ここでページごとに最適な倍率を計算し直す
-        scale = await getFitScale(page);
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            canvas.style.width = viewport.width + "px";
+            canvas.style.height = viewport.height + "px";
 
-        const viewport = page.getViewport({ scale: scale });
+            const renderContext = { canvasContext: ctx, viewport: viewport };
+            currentRenderTask = page.render(renderContext);
 
-        // Canvasサイズ更新
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        canvas.style.width = viewport.width + "px";
-        canvas.style.height = viewport.height + "px";
-
-        const renderContext = { canvasContext: ctx, viewport: viewport };
-        currentRenderTask = page.render(renderContext);
-
-        currentRenderTask.promise.then(() => {
-            isRendering = false;
-            currentRenderTask = null;
-            document.getElementById('page-num').textContent = num;
-            document.getElementById('zoom-percent').textContent = `${Math.round(scale * 100)}%`;
-        }).catch(err => {
-            if (err.name !== 'RenderingCancelledException') {
-                console.error("Render error:", err);
-            }
-            isRendering = false;
+            currentRenderTask.promise.then(() => {
+                isRendering = false;
+                currentRenderTask = null;
+                document.getElementById('page-num').textContent = num;
+                document.getElementById('zoom-percent').textContent = `${Math.round(scale * 100)}%`;
+            }).catch(err => {
+                if (err.name !== 'RenderingCancelledException') console.error(err);
+                isRendering = false;
+            });
         });
     }
 
-    // ページめくり
-    const goNext = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
-    const goPrev = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
-
-    function update() {
+    // --- ページ遷移（前・次・初期表示）用：サイズをリセットする ---
+    async function updateWithReset() {
+        // ページ遷移時は、そのページに最適な倍率を計算し直す
+        scale = await getFitScale(pageNum);
         renderPage(pageNum);
         if (window.forceTrack) window.forceTrack();
         if (container) container.scrollTop = 0;
     }
 
-    // ズーム（乗算に変更して滑らかに）
-    document.getElementById('zoom-in').onclick = () => { scale *= 1.2; renderPage(pageNum); };
-    document.getElementById('zoom-out').onclick = () => { scale /= 1.2; renderPage(pageNum); };
+    // --- ズーム用：今の scale を維持して再描画するだけ ---
+    function updateKeepZoom() {
+        renderPage(pageNum);
+    }
 
-    // クリック判定
+    // --- ボタン操作 ---
+    document.getElementById('prev-btn').onclick = () => { 
+        if (pageNum > 1 && !isRendering) { pageNum--; updateWithReset(); } 
+    };
+    document.getElementById('next-btn').onclick = () => { 
+        if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; updateWithReset(); } 
+    };
+
+    // ズームボタンは scale を変えてから「維持用」を呼ぶ
+    document.getElementById('zoom-in').onclick = () => { scale *= 1.2; updateKeepZoom(); };
+    document.getElementById('zoom-out').onclick = () => { scale /= 1.2; updateKeepZoom(); };
+
+    // キャンバスクリックも遷移なので「リセット用」
     canvas.addEventListener('click', (e) => {
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
-        if (x > rect.width * 0.7) goNext();
-        else if (x < rect.width * 0.3) goPrev();
+        if (x > rect.width * 0.7) { if (pageNum < pdfDoc.numPages) { pageNum++; updateWithReset(); } }
+        else if (x < rect.width * 0.3) { if (pageNum > 1) { pageNum--; updateWithReset(); } }
     });
-
-    document.getElementById('prev-btn').onclick = goPrev;
-    document.getElementById('next-btn').onclick = goNext;
+    
 
     // --- プレゼンス・ログ関連 ---
     async function logToDB(p) {
