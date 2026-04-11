@@ -49,27 +49,27 @@
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
     // --- 設定 ---
-    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; // あなたのURLを記入
-    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; // あなたのキーを記入
+    const SUPABASE_URL = ''; // あなたのURL
+    const SUPABASE_KEY = ''; // あなたのキー
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     const PDF_URL = './catalog_1.pdf'; 
 
     let pdfDoc = null, pageNum = 1, isRendering = false;
-    let scale = 1.5; // 初期の拡大率
+    let scale = 1.0; 
+    let currentRenderTask = null;
+
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
+    const container = document.getElementById('pdf-container'); // ここで確実に取得
     
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
     async function init() {
         if (!viewerId) { window.location.href = 'entry.html'; return; }
 
-        // 【機能：認証失敗時の強制遷移】
+        // 認証
         const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
-        
-        // 管理画面で削除された場合、profileがnullになるので追い出す
         if (error || !profile) {
-            console.error("Authentication failed: User deleted.");
             window.location.href = 'entry.html';
             return;
         }
@@ -77,135 +77,106 @@
         document.getElementById('welcome-msg').textContent = `${profile.company_name} ${profile.full_name} 様`;
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+        
         try {
+            // PDFの読み込み完了を待つ
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;
             
-            // --- ここで初期ストレッチ表示の倍率を計算 ---
+            // 初回の倍率計算（コンテナの幅に合わせる）
             const firstPage = await pdfDoc.getPage(1);
             const unscaledViewport = firstPage.getViewport({ scale: 1.0 });
-            // コンテナの幅（余白40px分を引く）をPDFの本来の幅で割る
-            scale = (container.clientWidth - 60) / unscaledViewport.width;
-            // ---------------------------------------
+            
+            // 計算。containerが取得できていることを確認
+            if (container) {
+                scale = (container.clientWidth - 60) / unscaledViewport.width;
+            } else {
+                scale = 1.2; // 予備の固定値
+            }
 
             renderPage(pageNum);
             startPresence();
         } catch (e) {
             console.error("PDF Load Error:", e);
-            alert("PDFが読み込めません。");
+            alert("PDFが読み込めません。ファイルパスを確認してください。");
         }
     }
 
-    async function logToDB(p) {
-        // 【機能：ログ送信時の認証チェック】
-        const { error } = await supabase.from('page_views').insert([{ 
-            user_id: viewerId, 
-            file_name: PDF_URL.split('/').pop(), 
-            current_page: p 
-        }]);
-
-        // 送信に失敗（＝ユーザーが消されている）したら追い出し
-        if (error) {
-            window.location.href = 'entry.html';
+    // 描画関数
+    function renderPage(num) {
+        if (currentRenderTask) {
+            currentRenderTask.cancel();
         }
+
+        isRendering = true;
+        pdfDoc.getPage(num).then(page => {
+            const viewport = page.getViewport({ scale: scale });
+
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            canvas.style.width = viewport.width + "px";
+            canvas.style.height = viewport.height + "px";
+
+            const renderContext = { canvasContext: ctx, viewport: viewport };
+            currentRenderTask = page.render(renderContext);
+
+            currentRenderTask.promise.then(() => {
+                isRendering = false;
+                currentRenderTask = null;
+                document.getElementById('page-num').textContent = num;
+                // 1.5倍（標準）を100%とした時の相対表示
+                document.getElementById('zoom-percent').textContent = `${Math.round(scale * 100)}%`;
+            }).catch(err => {
+                if (err.name !== 'RenderingCancelledException') {
+                    console.error("Render error:", err);
+                }
+                isRendering = false;
+            });
+        });
+    }
+
+    // ページめくり
+    const goNext = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
+    const goPrev = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
+
+    function update() {
+        renderPage(pageNum);
+        if (window.forceTrack) window.forceTrack();
+        if (container) container.scrollTop = 0;
+    }
+
+    // ズーム（乗算に変更して滑らかに）
+    document.getElementById('zoom-in').onclick = () => { scale *= 1.2; renderPage(pageNum); };
+    document.getElementById('zoom-out').onclick = () => { scale /= 1.2; renderPage(pageNum); };
+
+    // クリック判定
+    canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x > rect.width * 0.7) goNext();
+        else if (x < rect.width * 0.3) goPrev();
+    });
+
+    document.getElementById('prev-btn').onclick = goPrev;
+    document.getElementById('next-btn').onclick = goNext;
+
+    // --- プレゼンス・ログ関連 ---
+    async function logToDB(p) {
+        const { error } = await supabase.from('page_views').insert([{ 
+            user_id: viewerId, file_name: PDF_URL.split('/').pop(), current_page: p 
+        }]);
+        if (error) window.location.href = 'entry.html';
     }
 
     function startPresence() {
         const channel = supabase.channel('online-users');
         const track = () => {
-            channel.track({ 
-                user_id: viewerId, 
-                current_page: pageNum, 
-                current_path: PDF_URL.split('/').pop() 
-            });
+            channel.track({ user_id: viewerId, current_page: pageNum, current_path: PDF_URL.split('/').pop() });
             logToDB(pageNum);
         };
         channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
         setInterval(track, 30000); 
         window.forceTrack = track;
-    }
-
-    
-    let currentRenderTask = null; // 実行中の描画タスクを保持
-    function renderPage(num) {
-        // 1. 実行中の描画があればキャンセル（重要！）
-        if (currentRenderTask) {
-            currentRenderTask.cancel();
-        }
-
-    isRendering = true;
-    pdfDoc.getPage(num).then(page => {
-        const viewport = page.getViewport({ scale: scale });
-
-        // 2. Canvasの物理サイズ（解像度）を更新
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        // 3. ブラウザ上の表示サイズも倍率に合わせて更新する（CSSの干渉を防ぐ）
-        // これを追加することで、実際に見た目の大きさが変わります
-        canvas.style.width = viewport.width + "px";
-        canvas.style.height = viewport.height + "px";
-
-        const renderContext = {
-            canvasContext: ctx,
-            viewport: viewport
-        };
-
-        // 4. 描画タスクを開始
-        currentRenderTask = page.render(renderContext);
-
-        currentRenderTask.promise.then(() => {
-            isRendering = false;
-            currentRenderTask = null;
-            document.getElementById('page-num').textContent = num;
-            // 拡大率表示を更新
-            document.getElementById('zoom-percent').textContent = `${Math.round(scale / 1.5 * 100)}%`;
-        }).catch(err => {
-            if (err.name === 'RenderingCancelledException') {
-                console.log("描画がキャンセルされました（次の操作が優先されました）");
-            } else {
-                console.error("Render error:", err);
-            }
-            isRendering = false;
-        });
-    });
-}
-
-
-    // 【機能：拡大縮小イベント】
-    document.getElementById('zoom-in').onclick = () => {
-        scale += 0.25;
-        renderPage(pageNum);
-    };
-    document.getElementById('zoom-out').onclick = () => {
-        if (scale > 0.5) {
-            scale -= 0.25;
-            renderPage(pageNum);
-        }
-    };
-
-    // --- ページめくり関数 ---
-    const goNext = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
-    const goPrev = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
-
-    // --- クリック判定 ---
-    canvas.addEventListener('click', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        if (x > rect.width * 0.7) goNext(); // 右側30%
-        else if (x < rect.width * 0.3) goPrev(); // 左側30%
-    });
-
-    document.getElementById('prev-btn').onclick = goPrev;
-    document.getElementById('next-btn').onclick = goNext;
-    document.getElementById('zoom-in').onclick = () => { scale *= 1.2; renderPage(pageNum); };
-    document.getElementById('zoom-out').onclick = () => { scale /= 1.2; renderPage(pageNum); };
-
-    
-    function update() {
-        renderPage(pageNum);
-        if (window.forceTrack) window.forceTrack();
-        container.scrollTop = 0; // ページをめくった時に上端に戻す
     }
 
     init();
