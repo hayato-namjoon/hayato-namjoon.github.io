@@ -12,8 +12,22 @@
         button { background: #3498db; border: none; color: white; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button:disabled { background: #7f8c8d; }
         .back-btn { background: #95a5a6; }
-        #pdf-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; align-items: center; padding: 20px; background: #525659; }
-        canvas { background: white; box-shadow: 0 0 20px rgba(0,0,0,0.5); display: block; cursor: pointer; }
+        #pdf-container {
+            flex-grow: 1; 
+            overflow: auto; 
+            display: flex; 
+            justify-content: center; /* 横方向の中央寄せは維持 */
+            /* align-items: center;  ← これを削除（これが上スクロール不可の原因） */
+            padding: 20px; 
+            background: #525659; 
+        }
+        canvas { 
+            background: white; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            display: block; 
+            cursor: pointer;
+            margin: auto; /* ★これで見かけ上の上下中央寄せを維持しつつ、拡大時のスクロールを可能にします */
+        }
     </style>
 </head>
 <body>
@@ -122,7 +136,10 @@
         scale = await getFitScale(pageNum);
         await renderPage(pageNum);
         if (window.forceTrack) window.forceTrack();
-        if (container) container.scrollTop = 0;
+        // スクロール位置を左上(0,0)にリセット
+        if (container) {
+            container.scrollTo(0, 0);
+        }
     }
 
     // ズーム用
