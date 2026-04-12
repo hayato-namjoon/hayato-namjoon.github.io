@@ -176,6 +176,21 @@
     // 1分ごとに表示（タイマー）を更新
     setInterval(renderPresence, 60000);
     initPresence();
+
+function getPresenceLabel(user) {
+    const now = Date.now();
+    const diff = (now - user.last_seen) / 1000; // 秒差
+
+    if (diff > 60) {
+        return '<span class="gray">離脱済み？</span>'; // 1分以上報告がない
+    }
+    
+    if (user.status === 'away') {
+        return '<span class="yellow">離席中（他タブ）</span>';
+    }
+    
+    return '<span class="green">閲覧中</span>';
+}
 </script>
 </body>
 </html>
