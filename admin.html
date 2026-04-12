@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>営業分析ダッシュボード</title>
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --light: #f4f7f6; --hot: #e74c3c; }
+        :root { --primary: #3498db; --dark: #2c3e50; --light: #f4f7f6; --hot: #e74c3c; --green: #2ecc71; --gray: #95a5a6; --orange: #f39c12; }
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--light); margin: 0; }
         .nav { background: var(--dark); color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
         .container { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
@@ -12,17 +12,22 @@
         .filter-section { margin-bottom: 25px; }
         .filter-section input { padding: 12px; width: 300px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
 
-        .dashboard-grid { display: grid; grid-template-columns: 450px 1fr; gap: 30px; }
+        .dashboard-grid { display: grid; grid-template-columns: 480px 1fr; gap: 30px; }
         .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
 
+        /* ユーザーバッジのスタイル */
         .user-badge { 
-            background: white; border-left: 6px solid #2ecc71; padding: 15px; margin-bottom: 15px;
+            background: white; border-left: 6px solid var(--gray); padding: 15px; margin-bottom: 15px;
             display: flex; justify-content: space-between; align-items: center;
             border-radius: 6px; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+        .user-badge.online { border-left-color: var(--green); }
+        .user-badge.away { border-left-color: var(--orange); }
         .user-badge:hover { transform: translateX(5px); background: #fafafa; }
-        .user-badge .info b { font-size: 1.1em; color: var(--dark); }
-        .user-badge .timer { color: var(--hot); font-size: 0.9em; font-weight: bold; margin-top: 5px; }
+        
+        .info b { font-size: 1.1em; color: var(--dark); }
+        .status-text { font-size: 0.85em; font-weight: bold; margin-top: 5px; display: block; }
+        .timer { color: #7f8c8d; font-size: 0.8em; margin-top: 3px; }
         
         .page-circle { background: var(--primary); color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2em; }
 
@@ -31,7 +36,12 @@
         .modal-content { background: white; width: 550px; margin: 50px auto; padding: 30px; border-radius: 12px; position: relative; }
         .close-btn { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; }
         .history-box { background: #fff3cd; padding: 20px; border-radius: 8px; margin-top: 20px; border-left: 5px solid #ffc107; }
-        .sync-btn { display: block; text-align: center; background: #2ecc71; color: white; padding: 12px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 15px; }
+        .sync-btn { display: block; text-align: center; background: var(--green); color: white; padding: 12px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 15px; }
+
+        /* 状態別カラー */
+        .text-online { color: var(--green); }
+        .text-away { color: var(--orange); }
+        .text-offline { color: var(--gray); }
     </style>
 </head>
 <body>
@@ -54,8 +64,8 @@
         <div class="recent-logs">
             <h3>最近の動向</h3>
             <div class="card">
-                <table style="width:100%; border-collapse: collapse;" id="history-table">
-                    </table>
+                <p style="color:#666; font-size: 0.9em;">※ 最終更新が新しい順に表示しています</p>
+                <div id="history-summary"></div>
             </div>
         </div>
     </div>
@@ -100,8 +110,13 @@
         channel.on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
             const users = Object.values(state).flat();
-            // 重複排除して保持
+            
+            // ユーザーIDで重複排除しつつ最新状態を保持
             currentOnlineUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
+            
+            // ★重要：最終更新時刻(last_seen)が新しい順にソート
+            currentOnlineUsers.sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0));
+            
             renderPresence();
         }).subscribe();
     }
@@ -111,15 +126,32 @@
         const filter = document.getElementById('filter-company').value.toLowerCase();
         let html = '';
         let count = 0;
+        const now = Date.now();
 
         for (const u of currentOnlineUsers) {
             const profile = await getProfile(u.user_id);
             if (!profile || !profile.company_name.toLowerCase().includes(filter)) continue;
 
             const pNum = u.current_page || 1;
-            const now = Date.now();
+            const lastSeen = u.last_seen || 0;
+            const diffSec = Math.floor((now - lastSeen) / 1000);
 
-            // ページ遷移してからの連続滞在時間をフロントで計算
+            // 1. 生存・アクティブ判定
+            let statusLabel = "閲覧中";
+            let statusClass = "online";
+            let textClass = "text-online";
+
+            if (diffSec > 60) {
+                statusLabel = "離脱の可能性";
+                statusClass = "offline";
+                textClass = "text-offline";
+            } else if (u.status === 'away') {
+                statusLabel = "離席中（他タブ）";
+                statusClass = "away";
+                textClass = "text-away";
+            }
+
+            // 2. ページ滞在タイマー
             if (!pageStartTimeMap.has(u.user_id) || pageStartTimeMap.get(u.user_id).page !== pNum) {
                 pageStartTimeMap.set(u.user_id, { page: pNum, startTime: now });
             }
@@ -128,11 +160,12 @@
 
             count++;
             html += `
-                <div class="user-badge" onclick="showDetail('${u.user_id}', ${pNum})">
+                <div class="user-badge ${statusClass}" onclick="showDetail('${u.user_id}', ${pNum})">
                     <div class="info">
                         <b>${profile.company_name}</b><br>
                         <span>${profile.full_name}</span>
-                        <div class="timer">🔥 現在 ${pNum}P を ${continuousMin}分間 連続閲覧中</div>
+                        <span class="status-text ${textClass}">● ${statusLabel}</span>
+                        <div class="timer">🔥 ${pNum}Pに ${continuousMin}分滞在 (更新:${diffSec}秒前)</div>
                     </div>
                     <div class="page-circle">${pNum}</div>
                 </div>`;
@@ -144,7 +177,6 @@
     window.showDetail = async (userId, currentPage) => {
         const profile = await getProfile(userId);
         
-        // 過去30日の連続最長記録をDB(View)から取得
         const { data: history } = await supabase
             .from('top_3_stay_history')
             .select('*')
@@ -155,8 +187,8 @@
         document.getElementById('m-user').textContent = profile.full_name;
         document.getElementById('m-contact').textContent = `${profile.email} / ${profile.phone}`;
         
-        // 同期リンク
-        document.getElementById('m-sync-link').href = `view_site.html?id=${userId}&page=${currentPage}`;
+        // ★修正：idとpageを正しく引き継ぐ
+        document.getElementById('m-sync-link').href = `view_site.html?viewer_uuid=${userId}&page=${currentPage}`;
 
         const top3Html = history?.length 
             ? history.map((h, i) => `
@@ -173,25 +205,9 @@
 
     window.closeModal = () => { document.getElementById('userModal').style.display = 'none'; };
 
-    // 1分ごとに表示（タイマー）を更新
-    setInterval(renderPresence, 60000);
+    // 10秒ごとにリスト（秒数表示など）をリフレッシュ
+    setInterval(renderPresence, 10000);
     initPresence();
-
-function getPresenceLabel(user) {
-    const now = Date.now();
-    const diff = (now - user.last_seen) / 1000; // 秒差
-
-    if (diff > 60) {
-        return '<span class="gray">離脱済み？</span>'; // 1分以上報告がない
-    }
-    
-    if (user.status === 'away') {
-        return '<span class="yellow">離席中（他タブ）</span>';
-    }
-    
-    return '<span class="green">閲覧中</span>';
-}
 </script>
 </body>
 </html>
-
