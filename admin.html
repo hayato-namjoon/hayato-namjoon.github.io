@@ -133,9 +133,17 @@
             if (!profile || !profile.company_name.toLowerCase().includes(filter)) continue;
 
             const pNum = u.current_page || 1;
-            const lastSeen = u.last_seen || 0;
-            // 差分を計算（ミリ秒単位で引いてから1000で割る）
-            const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
+            const lastSeen = Number(u.last_seen); // 数値として強制変換
+            if (isNaN(lastSeen) || lastSeen === 0) {
+                // データが古い、または壊れている場合
+                html += ``;
+                continue;
+            }
+
+const diffSec = Math.max(0, Math.floor((Date.now() - lastSeen) / 1000));
+
+// 1分以上更新がない場合は「離脱」とする判定
+const isTimeout = diffSec > 60;
 
             // 1. 生存・アクティブ判定
             let statusLabel = "閲覧中";
