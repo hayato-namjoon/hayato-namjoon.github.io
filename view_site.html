@@ -173,15 +173,41 @@
     }
 
     function startPresence() {
-        const channel = supabase.channel('online-users');
-        const track = () => {
-            channel.track({ user_id: viewerId, current_page: pageNum, current_path: PDF_URL.split('/').pop() });
+    const channel = supabase.channel('online-users');
+
+    const track = () => {
+        // visibilityState を取得（'visible' か 'hidden'）
+        // これで「タブを開いているが別の作業をしている」がわかる
+        const status = document.visibilityState === 'visible' ? 'online' : 'away';
+
+        channel.track({ 
+            user_id: viewerId, 
+            current_page: pageNum, 
+            current_path: PDF_URL.split('/').pop(),
+            status: status, // アクティブ状態を送信
+            last_seen: Date.now() // 最終生存確認時刻
+        });
+        
+        // アクティブな時だけDBにログを残す（DB負荷軽減）
+        if (status === 'online') {
             logToDB(pageNum);
-        };
-        channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
-        setInterval(track, 30000); 
-        window.forceTrack = track;
-    }
+        }
+    };
+
+    channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
+
+    // 30秒おきの定期生存報告
+    const intervalId = setInterval(track, 30000);
+
+    // 【対策3：アクティブ/非アクティブ切り替え時に即座に報告】
+    document.addEventListener('visibilitychange', track);
+
+    // 【対策2：ページを閉じる・遷移する瞬間にチャネルを閉じる】
+    window.addEventListener('beforeunload', () => {
+        clearInterval(intervalId);
+        channel.unsubscribe(); 
+    });
+}
 
     init();
 </script>
