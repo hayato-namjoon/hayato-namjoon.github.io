@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>お見積り作成 - Sales Intelligence</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        :root { --primary: #3498db; --secondary: #2ecc71; --dark: #2c3e50; --light: #f4f7f6; --danger: #e74c3c; }
+        body { font-family: 'Helvetica Neue', Arial, "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; background: var(--light); margin: 0; padding: 20px; }
+        .estimate-container { max-width: 950px; margin: 0 auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h1 { color: var(--dark); border-bottom: 2px solid var(--primary); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .back-link { font-size: 0.5em; text-decoration: none; color: var(--primary); }
+        
+        .section { margin-bottom: 30px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; font-size: 0.9em; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { background: var(--dark); color: white; padding: 12px; text-align: left; font-size: 0.9em; }
+        td { padding: 10px; border-bottom: 1px solid #eee; }
+        
+        .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s; display: inline-block; }
+        .btn-add { background: var(--primary); color: white; margin-top: 10px; }
+        .btn-pdf { background: var(--secondary); color: white; width: 100%; font-size: 1.2em; margin-top: 30px; height: 60px; }
+        .btn-pdf:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-remove { background: var(--danger); color: white; padding: 5px 10px; }
+        
+        .totals { margin-top: 20px; text-align: right; font-size: 1.1em; background: #f9f9f9; padding: 20px; border-radius: 8px; }
+        .totals b { font-size: 1.6em; color: var(--primary); }
+        .status-msg { margin-top: 10px; text-align: center; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="estimate-container">
+    <h1>
+        お見積り作成
+        <a href="view_site.html" class="back-link">← カタログに戻る</a>
+    </h1>
+    
+    <div class="section grid">
+        <div>
+            <label>貴社名 (必須)</label>
+            <input type="text" id="customer-company" placeholder="株式会社〇〇">
+        </div>
+        <div>
+            <label>件名</label>
+            <input type="text" id="estimate-title" value="製品導入のご検討に関するお見積り">
+        </div>
+    </div>
+
+    <div class="section">
+        <table id="item-table">
+            <thead>
+                <tr>
+                    <th style="width: 45%;">商品名 / 型番</th>
+                    <th style="width: 20%;">単価 (税別)</th>
+                    <th style="width: 10%;">数量</th>
+                    <th style="width: 20%;">小計</th>
+                    <th style="width: 5%;"></th>
+                </tr>
+            </thead>
+            <tbody id="item-tbody"></tbody>
+        </table>
+        <button class="btn btn-add" onclick="addRow()">+ 行を追加</button>
+    </div>
+
+    <div class="totals">
+        <div>小計: ¥<span id="subtotal">0</span></div>
+        <div>消費税 (10%): ¥<span id="tax">0</span></div>
+        <div style="margin-top: 10px;">合計金額: <b>¥<span id="total">0</span></b></div>
+    </div>
+
+    <button id="submit-btn" class="btn btn-pdf" onclick="processEstimate()">
+        PDF見積書を発行 ＆ データを保存
+    </button>
+    <div id="status-msg" class="status-msg"></div>
+</div>
+
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // 商品マスタ (本来はDBから取得するが、UX向上のため定数でも保持)
+    const productMaster = [
+        { id: 'uuid1', name: "Flex-7 (産業用6軸アーム)", code: "NR-F7", price: 3800000 },
+        { id: 'uuid2', name: "Pro-Infinity (超精密6軸アーム)", code: "NR-P-INF", price: 5200000 },
+        { id: 'uuid3', name: "XS用チャック (NR-H-G5)", code: "NR-H-G5", price: 158000 },
+        { id: 'uuid4', name: "3Dビジョンセンサ", code: "NR-Cam-S", price: 298000 },
+        { id: 'uuid5', name: "Nano-Pace 3 (ペースメーカー)", code: "AM-PM-SYNC", price: 1200000 },
+        { id: 'uuid6', name: "Heart-View Pro (12誘導心電計)", code: "AM-ECG-12", price: 850000 }
+    ];
+
+    // --- PDF日本語フォント設定用の変数 ---
+    // 実際にはここにBase64化したフォントファイルを貼り付けます
+    const JP_FONT_VFS = ""; 
+
+    // 行追加
+    window.addRow = function() {
+        const tbody = document.getElementById('item-tbody');
+        const tr = document.createElement('tr');
+        
+        let options = productMaster.map(p => 
+            `<option value="${p.price}" data-id="${p.id}" data-name="${p.name}">${p.name} (${p.code})</option>`
+        ).join('');
+        
+        tr.innerHTML = `
+            <td>
+                <select onchange="updatePrice(this)" class="product-select">
+                    <option value="0">商品を選択してください</option>
+                    ${options}
+                    <option value="custom">直接入力（カスタム）</option>
+                </select>
+            </td>
+            <td><input type="number" class="price" value="0" oninput="calculate()"></td>
+            <td><input type="number" class="qty" value="1" min="1" oninput="calculate()"></td>
+            <td class="row-total" style="font-weight:bold;">¥0</td>
+            <td><button class="btn btn-remove" onclick="this.parentElement.parentElement.remove(); calculate();">×</button></td>
+        `;
+        tbody.appendChild(tr);
+    };
+
+    window.updatePrice = function(select) {
+        const row = select.parentElement.parentElement;
+        const priceInput = row.querySelector('.price');
+        if (select.value !== "custom") {
+            priceInput.value = select.value;
+            priceInput.readOnly = true;
+        } else {
+            priceInput.readOnly = false;
+        }
+        calculate();
+    };
+
+    window.calculate = function() {
+        let subtotal = 0;
+        document.querySelectorAll('#item-tbody tr').forEach(tr => {
+            const price = parseFloat(tr.querySelector('.price').value) || 0;
+            const qty = parseFloat(tr.querySelector('.qty').value) || 0;
+            const rowTotal = price * qty;
+            tr.querySelector('.row-total').textContent = '¥' + rowTotal.toLocaleString();
+            subtotal += rowTotal;
+        });
+
+        const tax = Math.floor(subtotal * 0.1);
+        const total = subtotal + tax;
+
+        document.getElementById('subtotal').textContent = subtotal.toLocaleString();
+        document.getElementById('tax').textContent = tax.toLocaleString();
+        document.getElementById('total').textContent = total.toLocaleString();
+    };
+
+    // 見積保存 ＆ PDF生成のメイン処理
+    window.processEstimate = async function() {
+        const company = document.getElementById('customer-company').value;
+        const title = document.getElementById('estimate-title').value;
+        const viewerId = localStorage.getItem('viewer_uuid'); // 以前のページから取得
+
+        if (!company) { alert("貴社名を入力してください"); return; }
+
+        const btn = document.getElementById('submit-btn');
+        const msg = document.getElementById('status-msg');
+        btn.disabled = true;
+        msg.textContent = "データを保存中...";
+
+        try {
+            // 1. Supabaseへ見積情報を保存 (estimatesテーブル)
+            const subtotal = parseInt(document.getElementById('subtotal').textContent.replace(/,/g, ''));
+            const tax = parseInt(document.getElementById('tax').textContent.replace(/,/g, ''));
+            const total = parseInt(document.getElementById('total').textContent.replace(/,/g, ''));
+
+            const { data: estData, error: estErr } = await supabase
+                .from('estimates')
+                .insert([{ 
+                    viewer_id: viewerId, 
+                    title: title, 
+                    customer_company: company,
+                    subtotal_price: subtotal,
+                    tax_amount: tax,
+                    total_price: total
+                }])
+                .select();
+
+            if (estErr) throw estErr;
+
+            // 2. 見積明細を保存 (estimate_itemsテーブル)
+            const estimateId = estData[0].id;
+            const items = [];
+            document.querySelectorAll('#item-tbody tr').forEach(tr => {
+                const select = tr.querySelector('.product-select');
+                const price = parseInt(tr.querySelector('.price').value);
+                const qty = parseInt(tr.querySelector('.qty').value);
+                
+                items.push({
+                    estimate_id: estimateId,
+                    product_id: select.options[select.selectedIndex].dataset.id || null,
+                    product_name_snap: select.options[select.selectedIndex].text,
+                    unit_price: price,
+                    quantity: qty,
+                    row_total: price * qty
+                });
+            });
+
+            const { error: itemErr } = await supabase.from('estimate_items').insert(items);
+            if (itemErr) throw itemErr;
+
+            msg.style.color = "green";
+            msg.textContent = "保存完了！PDFを生成します...";
+
+            // 3. PDF生成
+            generatePDF(company, title, items, total);
+
+        } catch (err) {
+            console.error(err);
+            alert("エラーが発生しました: " + err.message);
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    function generatePDF(company, title, items, total) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    // ここで「日本語フォントデータ」をライブラリにインストールしている
+    if (JP_FONT_VFS) {
+        doc.addFileToVFS("Japanese.ttf", JP_FONT_VFS);
+        doc.addFont("Japanese.ttf", "Japanese", "normal");
+        doc.setFont("Japanese"); // 「今から日本語を使いますよ」という宣言
+    }
+
+        // デザイン
+        doc.setFontSize(20);
+        doc.text("御 見 積 書", 105, 20, { align: "center" });
+        
+        doc.setFontSize(12);
+        doc.text(`宛先: ${company} 御中`, 20, 40);
+        doc.text(`件名: ${title}`, 20, 50);
+        doc.text(`発行日: ${new Date().toLocaleDateString()}`, 150, 40);
+        
+        doc.setFontSize(16);
+        doc.text(`合計金額: ￥${total.toLocaleString()} (税込)`, 20, 70);
+
+        // 表の作成
+        const tableBody = items.map(i => [i.product_name_snap, `¥${i.unit_price.toLocaleString()}`, i.quantity, `¥${i.row_total.toLocaleString()}`]);
+        
+        doc.autoTable({
+            startY: 80,
+            head: [['品名/型番', '単価', '数量', '金額']],
+            body: tableBody,
+            headStyles: { fillColor: [44, 62, 80] },
+            styles: { font: JP_FONT_VFS ? "Japanese" : "helvetica" }
+        });
+
+        doc.save(`見積書_${company}.pdf`);
+    }
+
+    // 初期行を追加
+    addRow();
+
+</script>
+</body>
+</html>
