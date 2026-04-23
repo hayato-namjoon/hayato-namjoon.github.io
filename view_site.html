@@ -7,12 +7,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body { margin: 0; background: #525659; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; overflow: hidden; }
-        /* ツールバーのレイアウト調整：左にボタン、右にズーム */
         .toolbar { background: #2c3e50; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); z-index: 100; }
-        .zoom-controls { display: flex; align-items: center; gap: 15px; }
+        .zoom-controls, .page-display { display: flex; align-items: center; gap: 15px; }
         button { background: #3498db; border: none; color: white; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
-        button:disabled { background: #7f8c8d; }
         .back-btn { background: #95a5a6; }
+        
         #pdf-container {
             flex-grow: 1; 
             overflow: auto; 
@@ -26,7 +25,7 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
             display: block; 
             cursor: pointer;
-            margin: auto; 
+            margin: auto; /* 上下中央を維持しつつスクロールを可能にする設定 */
         }
     </style>
 </head>
@@ -35,15 +34,18 @@
 <div class="toolbar">
     <div>
         <button class="back-btn" onclick="location.href='choice_catalog.html'">← 戻る</button>
-        </div>
+    </div>
+
+    <div class="page-display">
+        <span>Page: <span id="page-num">1</span> / <span id="page-count">-</span></span>
+    </div>
     
     <div class="zoom-controls">
         <button id="zoom-out">－</button>
         <span id="zoom-percent" style="min-width: 50px; text-align: center;">100%</span>
         <button id="zoom-in">＋</button>
     </div>
-
-    </div>
+</div>
 
 <div id="pdf-container">
     <canvas id="pdf-render"></canvas>
@@ -64,22 +66,17 @@
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
     async function init() {
-        // 管理者画面からの遷移時、URLパラメータに page があれば取得
         const urlParams = new URLSearchParams(window.location.search);
         const targetPage = parseInt(urlParams.get('page'));
 
         if (!viewerId) { window.location.href = 'entry.html'; return; }
         
-        // プロフィール確認（裏側で認証は維持）
-        const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
-        if (error || !profile) { window.location.href = 'entry.html'; return; }
-
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
         
         try {
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
+            document.getElementById('page-count').textContent = pdfDoc.numPages;
             
-            // ターゲットページ指定があれば上書き
             if (targetPage && targetPage > 0 && targetPage <= pdfDoc.numPages) {
                 pageNum = targetPage;
             }
@@ -115,6 +112,9 @@
             const renderContext = { canvasContext: ctx, viewport: viewport };
             currentRenderTask = page.render(renderContext);
             await currentRenderTask.promise;
+            
+            // ページ番号とズーム率の更新
+            document.getElementById('page-num').textContent = num;
             document.getElementById('zoom-percent').textContent = `${Math.round(scale * 100)}%`;
         } catch (err) {
             if (err.name !== 'RenderingCancelledException') console.error(err);
@@ -128,7 +128,6 @@
         scale = await getFitScale(pageNum);
         await renderPage(pageNum);
         if (container) container.scrollTo(0, 0);
-        // Presenceの即時反映用（もし必要なら）
         if (window.forceTrack) window.forceTrack();
     }
 
@@ -139,7 +138,7 @@
     document.getElementById('zoom-in').onclick = () => { scale *= 1.2; updateKeepZoom(); };
     document.getElementById('zoom-out').onclick = () => { scale /= 1.2; updateKeepZoom(); };
 
-    // キャンバスクリックによるページ送りは、操作性のために維持しています
+    // 画面クリックでページ移動（ボタンはないが操作性は維持）
     canvas.addEventListener('click', (e) => {
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -168,14 +167,9 @@
         };
 
         channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
-        const intervalId = setInterval(track, 30000);
+        setInterval(track, 30000);
         document.addEventListener('visibilitychange', track);
-        window.forceTrack = track; // ページ遷移時に即座に送れるように露出
-
-        window.addEventListener('beforeunload', () => {
-            clearInterval(intervalId);
-            channel.unsubscribe(); 
-        });
+        window.forceTrack = track;
     }
 
     init();
