@@ -109,16 +109,30 @@
     }
 
     // --- リアルタイム追跡（管理画面への通知用） ---
+    // estimate.html 内の startPresence 関数
     function startPresence() {
         const channel = supabase.channel('online-users');
+        
         const track = () => {
             channel.track({ 
                 user_id: viewerId, 
-                current_path: 'estimate.html', // admin側で「見積中」と判定させる
+                current_path: 'estimate.html',
+                current_page: 0, // 見積ページは0として送る
                 status: document.visibilityState === 'visible' ? 'online' : 'away',
                 last_seen: Date.now()
             });
         };
+    
+        channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
+    
+        // 30秒おきの定期送信
+        setInterval(track, 30000);
+    
+        // ★追加：タブがアクティブになった瞬間に即座に再送する（復帰を管理画面に知らせる）
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') track();
+        });
+    }
         channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
         setInterval(track, 30000);
         document.addEventListener('visibilitychange', track);
