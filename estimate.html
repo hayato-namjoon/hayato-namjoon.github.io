@@ -133,10 +133,6 @@
             if (document.visibilityState === 'visible') track();
         });
     }
-        channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
-        setInterval(track, 30000);
-        document.addEventListener('visibilitychange', track);
-    }
 
     // --- フォーム操作ロジック ---
     window.addRow = function() {
