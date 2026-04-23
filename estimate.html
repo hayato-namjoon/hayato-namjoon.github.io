@@ -37,7 +37,7 @@
 <div class="estimate-container">
     <h1>
         お見積り作成
-        <a href="view_site.html" class="back-link">← カタログに戻る</a>
+        <a href="choice_catalog.html" class="back-link">← カタログ選択に戻る</a>
     </h1>
     
     <div class="section grid">
@@ -82,31 +82,54 @@
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
+    // --- 設定：各自の環境に合わせて書き換えてください ---
     const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // 商品マスタ (本来はDBから取得するが、UX向上のため定数でも保持)
     const productMaster = [
-        { id: 'uuid1', name: "Flex-7 (産業用6軸アーム)", code: "NR-F7", price: 3800000 },
-        { id: 'uuid2', name: "Pro-Infinity (超精密6軸アーム)", code: "NR-P-INF", price: 5200000 },
-        { id: 'uuid3', name: "XS用チャック (NR-H-G5)", code: "NR-H-G5", price: 158000 },
-        { id: 'uuid4', name: "3Dビジョンセンサ", code: "NR-Cam-S", price: 298000 },
-        { id: 'uuid5', name: "Nano-Pace 3 (ペースメーカー)", code: "AM-PM-SYNC", price: 1200000 },
-        { id: 'uuid6', name: "Heart-View Pro (12誘導心電計)", code: "AM-ECG-12", price: 850000 }
+        { id: 'f7', name: "Flex-7 (産業用6軸アーム)", code: "NR-F7", price: 3800000 },
+        { id: 'pro', name: "Pro-Infinity (超精密6軸アーム)", code: "NR-P-INF", price: 5200000 },
+        { id: 'h-g5', name: "XS用チャック (NR-H-G5)", code: "NR-H-G5", price: 158000 },
+        { id: 'cam', name: "3Dビジョンセンサ", code: "NR-Cam-S", price: 298000 },
+        { id: 'pace', name: "Nano-Pace 3 (ペースメーカー)", code: "AM-PM-SYNC", price: 1200000 },
+        { id: 'ecg', name: "Heart-View Pro (12誘導心電計)", code: "AM-ECG-12", price: 850000 }
     ];
 
-    // --- PDF日本語フォント設定用の変数 ---
-    // 実際にはここにBase64化したフォントファイルを貼り付けます
+    // 日本語フォントBase64文字列（ツールで変換したものをここに貼り付け）
     const JP_FONT_VFS = ""; 
 
-    // 行追加
+    // CookieからユーザーID取得
+    const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
+
+    async function init() {
+        if (!viewerId) { window.location.href = 'entry.html'; return; }
+        startPresence();
+        addRow(); // 初期行
+    }
+
+    // --- リアルタイム追跡（管理画面への通知用） ---
+    function startPresence() {
+        const channel = supabase.channel('online-users');
+        const track = () => {
+            channel.track({ 
+                user_id: viewerId, 
+                current_path: 'estimate.html', // admin側で「見積中」と判定させる
+                status: document.visibilityState === 'visible' ? 'online' : 'away',
+                last_seen: Date.now()
+            });
+        };
+        channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
+        setInterval(track, 30000);
+        document.addEventListener('visibilitychange', track);
+    }
+
+    // --- フォーム操作ロジック ---
     window.addRow = function() {
         const tbody = document.getElementById('item-tbody');
         const tr = document.createElement('tr');
-        
         let options = productMaster.map(p => 
-            `<option value="${p.price}" data-id="${p.id}" data-name="${p.name}">${p.name} (${p.code})</option>`
+            `<option value="${p.price}" data-id="${p.id}">${p.name} (${p.code})</option>`
         ).join('');
         
         tr.innerHTML = `
@@ -132,6 +155,7 @@
             priceInput.value = select.value;
             priceInput.readOnly = true;
         } else {
+            priceInput.value = 0;
             priceInput.readOnly = false;
         }
         calculate();
@@ -146,21 +170,17 @@
             tr.querySelector('.row-total').textContent = '¥' + rowTotal.toLocaleString();
             subtotal += rowTotal;
         });
-
         const tax = Math.floor(subtotal * 0.1);
         const total = subtotal + tax;
-
         document.getElementById('subtotal').textContent = subtotal.toLocaleString();
         document.getElementById('tax').textContent = tax.toLocaleString();
         document.getElementById('total').textContent = total.toLocaleString();
     };
 
-    // 見積保存 ＆ PDF生成のメイン処理
+    // --- 保存 ＆ PDF生成 ---
     window.processEstimate = async function() {
         const company = document.getElementById('customer-company').value;
         const title = document.getElementById('estimate-title').value;
-        const viewerId = localStorage.getItem('viewer_uuid'); // 以前のページから取得
-
         if (!company) { alert("貴社名を入力してください"); return; }
 
         const btn = document.getElementById('submit-btn');
@@ -169,43 +189,30 @@
         msg.textContent = "データを保存中...";
 
         try {
-            // 1. Supabaseへ見積情報を保存 (estimatesテーブル)
             const subtotal = parseInt(document.getElementById('subtotal').textContent.replace(/,/g, ''));
             const tax = parseInt(document.getElementById('tax').textContent.replace(/,/g, ''));
             const total = parseInt(document.getElementById('total').textContent.replace(/,/g, ''));
 
-            const { data: estData, error: estErr } = await supabase
-                .from('estimates')
-                .insert([{ 
-                    viewer_id: viewerId, 
-                    title: title, 
-                    customer_company: company,
-                    subtotal_price: subtotal,
-                    tax_amount: tax,
-                    total_price: total
-                }])
-                .select();
-
+            // 1. メイン保存
+            const { data: estData, error: estErr } = await supabase.from('estimates').insert([{ 
+                viewer_id: viewerId, title: title, customer_company: company,
+                subtotal_price: subtotal, tax_amount: tax, total_price: total
+            }]).select();
             if (estErr) throw estErr;
 
-            // 2. 見積明細を保存 (estimate_itemsテーブル)
+            // 2. 明細保存
             const estimateId = estData[0].id;
             const items = [];
             document.querySelectorAll('#item-tbody tr').forEach(tr => {
                 const select = tr.querySelector('.product-select');
                 const price = parseInt(tr.querySelector('.price').value);
                 const qty = parseInt(tr.querySelector('.qty').value);
-                
                 items.push({
                     estimate_id: estimateId,
-                    product_id: select.options[select.selectedIndex].dataset.id || null,
                     product_name_snap: select.options[select.selectedIndex].text,
-                    unit_price: price,
-                    quantity: qty,
-                    row_total: price * qty
+                    unit_price: price, quantity: qty, row_total: price * qty
                 });
             });
-
             const { error: itemErr } = await supabase.from('estimate_items').insert(items);
             if (itemErr) throw itemErr;
 
@@ -224,31 +231,25 @@
     };
 
     function generatePDF(company, title, items, total) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
 
-    // ここで「日本語フォントデータ」をライブラリにインストールしている
-    if (JP_FONT_VFS) {
-        doc.addFileToVFS("Japanese.ttf", JP_FONT_VFS);
-        doc.addFont("Japanese.ttf", "Japanese", "normal");
-        doc.setFont("Japanese"); // 「今から日本語を使いますよ」という宣言
-    }
+        if (JP_FONT_VFS) {
+            doc.addFileToVFS("Japanese.ttf", JP_FONT_VFS);
+            doc.addFont("Japanese.ttf", "Japanese", "normal");
+            doc.setFont("Japanese");
+        }
 
-        // デザイン
         doc.setFontSize(20);
         doc.text("御 見 積 書", 105, 20, { align: "center" });
-        
         doc.setFontSize(12);
         doc.text(`宛先: ${company} 御中`, 20, 40);
         doc.text(`件名: ${title}`, 20, 50);
         doc.text(`発行日: ${new Date().toLocaleDateString()}`, 150, 40);
-        
         doc.setFontSize(16);
         doc.text(`合計金額: ￥${total.toLocaleString()} (税込)`, 20, 70);
 
-        // 表の作成
         const tableBody = items.map(i => [i.product_name_snap, `¥${i.unit_price.toLocaleString()}`, i.quantity, `¥${i.row_total.toLocaleString()}`]);
-        
         doc.autoTable({
             startY: 80,
             head: [['品名/型番', '単価', '数量', '金額']],
@@ -260,9 +261,7 @@
         doc.save(`見積書_${company}.pdf`);
     }
 
-    // 初期行を追加
-    addRow();
-
+    init();
 </script>
 </body>
 </html>
