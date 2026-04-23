@@ -15,7 +15,6 @@
         .dashboard-grid { display: grid; grid-template-columns: 480px 1fr; gap: 30px; }
         .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
 
-        /* ユーザーバッジの基本スタイル */
         .user-badge { 
             background: white; border-left: 6px solid var(--gray); padding: 15px; margin-bottom: 15px;
             display: flex; justify-content: space-between; align-items: center;
@@ -24,28 +23,15 @@
         }
         .user-badge.online { border-left-color: var(--green); }
         .user-badge.away { border-left-color: var(--orange); }
-        .user-badge:hover { transform: translateX(5px); background: #fafafa; }
-        
-        /* 🔥 ホットユーザー（見積ページ閲覧中）の強調スタイル */
-        .user-badge.hot-user {
-            border: 2px solid var(--hot);
-            border-left: 8px solid var(--hot);
-            background: #fff5f5;
-        }
-        .hot-label {
-            position: absolute; top: -10px; left: 10px;
-            background: var(--hot); color: white; font-size: 0.7em; font-weight: bold;
-            padding: 2px 8px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
+        .user-badge.hot-user { border: 2px solid var(--hot); border-left: 8px solid var(--hot); background: #fff5f5; }
+        .hot-label { position: absolute; top: -10px; left: 10px; background: var(--hot); color: white; font-size: 0.7em; font-weight: bold; padding: 2px 8px; border-radius: 10px; }
         
         .info b { font-size: 1.1em; color: var(--dark); }
         .status-text { font-size: 0.85em; font-weight: bold; margin-top: 5px; display: block; }
         .timer { color: #7f8c8d; font-size: 0.8em; margin-top: 3px; }
-        
         .page-circle { background: var(--primary); color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2em; }
-        .hot-user .page-circle { background: var(--hot); } /* ホットユーザーは丸も赤く */
+        .hot-user .page-circle { background: var(--hot); }
 
-        /* モーダル等省略なし */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; }
         .modal-content { background: white; width: 550px; margin: 50px auto; padding: 30px; border-radius: 12px; position: relative; }
         .close-btn { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; }
@@ -124,14 +110,12 @@
             const users = Object.values(state).flat();
             currentOnlineUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
             
-            // ソート：1.見積中(hot)を優先、2.last_seenが新しい順
             currentOnlineUsers.sort((a, b) => {
                 const aIsHot = a.current_path === 'estimate.html' ? 1 : 0;
                 const bIsHot = b.current_path === 'estimate.html' ? 1 : 0;
                 if (bIsHot !== aIsHot) return bIsHot - aIsHot;
                 return (b.last_seen || 0) - (a.last_seen || 0);
             });
-            
             renderPresence();
         }).subscribe();
     }
@@ -143,30 +127,26 @@
         let count = 0;
         const now = Date.now();
 
-        // admin.html 内の renderPresence 関数の一部
         for (const u of currentOnlineUsers) {
             const profile = await getProfile(u.user_id);
             if (!profile || !profile.company_name.toLowerCase().includes(filter)) continue;
-        
+
             const pNum = u.current_page || 1;
             const path = u.current_path || '';
             const lastSeen = Number(u.last_seen);
-            const now = Date.now();
             const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
-        
-            // --- ここからステータス判定ロジックを強化 ---
+            const isHot = (path === 'estimate.html');
+
             let statusLabel = "";
             let statusClass = "online";
             let textClass = "";
-            const isHot = (path === 'estimate.html');
-        
+
+            // ステータス判定（復帰を即座に反映）
             if (diffSec > 60) {
-                // 1分以上通信がない場合
                 statusLabel = "離脱の可能性";
                 statusClass = "offline";
                 textClass = "text-offline";
             } else {
-                // 通信が正常（復帰した場合もここに入る）
                 if (u.status === 'away') {
                     statusLabel = "離席中（他タブ）";
                     statusClass = "away";
@@ -181,15 +161,13 @@
                     textClass = "text-online";
                 }
             }
-            // --- 判定ロジックここまで ---
-        
-            // タイマーの更新（ページが変わっていたらリセット）
+
             if (!pageStartTimeMap.has(u.user_id) || pageStartTimeMap.get(u.user_id).page !== pNum || pageStartTimeMap.get(u.user_id).path !== path) {
                 pageStartTimeMap.set(u.user_id, { page: pNum, path: path, startTime: now });
             }
             const start = pageStartTimeMap.get(u.user_id).startTime;
             const continuousMin = Math.floor((now - start) / 60000);
-        
+
             count++;
             html += `
                 <div class="user-badge ${statusClass}" onclick="showDetail('${u.user_id}', ${pNum}, '${path}')">
@@ -202,8 +180,8 @@
                     </div>
                     <div class="page-circle">${isHot ? '📄' : pNum}</div>
                 </div>`;
-        }
-        }
+        } // ここで正しく for ループを閉じる
+
         document.getElementById('user-count').textContent = count;
         list.innerHTML = html || '<p style="color:#999">現在、閲覧中のユーザーはいません。</p>';
     }
@@ -220,7 +198,6 @@
         document.getElementById('m-user').textContent = profile.full_name;
         document.getElementById('m-contact').textContent = `${profile.email} / ${profile.phone}`;
         
-        // 同期リンクもパスに応じて切り替え
         const targetUrl = path === 'estimate.html' ? 'estimate.html' : `view_site.html?page=${currentPage}`;
         document.getElementById('m-sync-link').href = `${targetUrl}&viewer_uuid=${userId}`;
 
