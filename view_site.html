@@ -51,9 +51,11 @@
     <canvas id="pdf-render"></canvas>
 </div>
 
+
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
+    // --- 設定：必ずご自身のプロジェクトの値を入力してください ---
     const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -63,14 +65,16 @@
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
     const container = document.getElementById('pdf-container');
+    
+    // CookieからID取得（共通処理）
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
     async function init() {
+        if (!viewerId) { window.location.href = 'entry.html'; return; }
+        
         const urlParams = new URLSearchParams(window.location.search);
         const targetPage = parseInt(urlParams.get('page'));
 
-        if (!viewerId) { window.location.href = 'entry.html'; return; }
-        
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
         
         try {
@@ -81,8 +85,12 @@
                 pageNum = targetPage;
             }
             
+            // 初回描画
             await updateWithReset();
+            
+            // PDF読み込み完了後にプレゼンス開始
             startPresence();
+            
         } catch (e) {
             console.error("PDF Load Error:", e);
         }
@@ -113,7 +121,6 @@
             currentRenderTask = page.render(renderContext);
             await currentRenderTask.promise;
             
-            // ページ番号とズーム率の更新
             document.getElementById('page-num').textContent = num;
             document.getElementById('zoom-percent').textContent = `${Math.round(scale * 100)}%`;
         } catch (err) {
@@ -128,6 +135,7 @@
         scale = await getFitScale(pageNum);
         await renderPage(pageNum);
         if (container) container.scrollTo(0, 0);
+        // 管理画面へ通知
         if (window.forceTrack) window.forceTrack();
     }
 
@@ -138,22 +146,31 @@
     document.getElementById('zoom-in').onclick = () => { scale *= 1.2; updateKeepZoom(); };
     document.getElementById('zoom-out').onclick = () => { scale /= 1.2; updateKeepZoom(); };
 
-    // 画面クリックでページ移動（ボタンはないが操作性は維持）
     canvas.addEventListener('click', (e) => {
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
-        if (x > rect.width * 0.7) { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; updateWithReset(); } }
-        else if (x < rect.width * 0.3) { if (pageNum > 1 && !isRendering) { pageNum--; updateWithReset(); } }
+        if (x > rect.width * 0.7) { 
+            if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; updateWithReset(); } 
+        } else if (x < rect.width * 0.3) { 
+            if (pageNum > 1 && !isRendering) { pageNum--; updateWithReset(); } 
+        }
     });
 
+    // DBへの閲覧ログ記録
     async function logToDB(p) {
+        if (!viewerId) return;
         await supabase.from('page_views').insert([{ 
-            user_id: viewerId, file_name: PDF_URL.split('/').pop(), current_page: p 
+            user_id: viewerId, 
+            file_name: PDF_URL.split('/').pop(), 
+            current_page: p 
         }]);
     }
 
+    // プレゼンス機能（管理画面へのリアルタイム通知）
     function startPresence() {
+        if (!viewerId) return;
         const channel = supabase.channel('online-users');
+
         const track = () => {
             const status = document.visibilityState === 'visible' ? 'online' : 'away';
             channel.track({ 
@@ -163,16 +180,28 @@
                 status: status,
                 last_seen: Date.now()
             });
+            // オンラインの時だけDBログも残す
             if (status === 'online') logToDB(pageNum);
         };
 
-        channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
+        channel.subscribe(status => {
+            if (status === 'SUBSCRIBED') {
+                console.log("Presence Subscribed");
+                track();
+            }
+        });
+
+        // 30秒ごとに自動更新
         setInterval(track, 30000);
+
+        // タブの切り替え時に即座に更新
         document.addEventListener('visibilitychange', track);
+
+        // グローバルに登録して updateWithReset から呼べるようにする
         window.forceTrack = track;
     }
 
+    // 起動
     init();
 </script>
-</body>
 </html>
