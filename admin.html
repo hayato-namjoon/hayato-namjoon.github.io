@@ -85,6 +85,8 @@
     </div>
 </div>
 
+
+    
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
@@ -95,12 +97,17 @@
     const profileCache = new Map();
     const pageStartTimeMap = new Map(); 
     let currentOnlineUsers = [];
+    let isRendering = false; // 二重起動防止フラグ
 
+    // プロフィール取得（キャッシュ優先）
     async function getProfile(id) {
         if (profileCache.has(id)) return profileCache.get(id);
-        const { data } = await supabase.from('profiles').select('*').eq('id', id).single();
-        if (data) profileCache.set(id, data);
-        return data;
+        const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
+        if (data) {
+            profileCache.set(id, data);
+            return data;
+        }
+        return null;
     }
 
     function initPresence() {
@@ -108,46 +115,61 @@
         channel.on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
             const users = Object.values(state).flat();
-            currentOnlineUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
             
-            currentOnlineUsers.sort((a, b) => {
+            // 重複排除
+            const uniqueUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
+            
+            // ソート
+            uniqueUsers.sort((a, b) => {
                 const aIsHot = a.current_path === 'estimate.html' ? 1 : 0;
                 const bIsHot = b.current_path === 'estimate.html' ? 1 : 0;
                 if (bIsHot !== aIsHot) return bIsHot - aIsHot;
-                return (b.last_seen || 0) - (a.last_seen || 0);
+                return (Number(b.last_seen) || 0) - (Number(a.last_seen) || 0);
             });
-            renderPresence();
+
+            currentOnlineUsers = uniqueUsers;
+            renderPresence(); // 同期イベント時に実行
         }).subscribe();
     }
 
     async function renderPresence() {
+        // すでにレンダリング中ならスキップして競合を防ぐ
+        if (isRendering) return;
+        isRendering = true;
+
         const list = document.getElementById('presence-list');
         const filter = document.getElementById('filter-company').value.toLowerCase();
         let html = '';
         let count = 0;
         const now = Date.now();
 
-        for (const u of currentOnlineUsers) {
-            const profile = await getProfile(u.user_id);
-            if (!profile || !profile.company_name.toLowerCase().includes(filter)) continue;
+        try {
+            // 1. まず全ユーザーのプロフィールを並列でチェック・取得（高速化）
+            await Promise.all(currentOnlineUsers.map(u => getProfile(u.user_id)));
 
-            const pNum = u.current_page || 1;
-            const path = u.current_path || '';
-            const lastSeen = Number(u.last_seen);
-            const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
-            const isHot = (path === 'estimate.html');
+            // 2. HTMLの組み立て
+            for (const u of currentOnlineUsers) {
+                const profile = profileCache.get(u.user_id);
+                
+                // プロフィールがない、またはフィルタに合致しない場合はスキップ
+                if (!profile) continue;
+                if (filter && !profile.company_name.toLowerCase().includes(filter)) continue;
 
-            let statusLabel = "";
-            let statusClass = "online";
-            let textClass = "";
+                const pNum = u.current_page || 1;
+                const path = u.current_path || '';
+                const lastSeen = Number(u.last_seen) || now;
+                const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
+                const isHot = (path === 'estimate.html');
 
-            // ステータス判定（復帰を即座に反映）
-            if (diffSec > 60) {
-                statusLabel = "離脱の可能性";
-                statusClass = "offline";
-                textClass = "text-offline";
-            } else {
-                if (u.status === 'away') {
+                let statusLabel = "";
+                let statusClass = "online";
+                let textClass = "";
+
+                if (diffSec > 60) {
+                    statusLabel = "離脱の可能性";
+                    statusClass = "offline";
+                    textClass = "text-offline";
+                } else if (u.status === 'away') {
                     statusLabel = "離席中（他タブ）";
                     statusClass = "away";
                     textClass = "text-away";
@@ -160,34 +182,43 @@
                     statusClass = "online";
                     textClass = "text-online";
                 }
+
+                // タイマー管理
+                const timerKey = u.user_id;
+                if (!pageStartTimeMap.has(timerKey) || pageStartTimeMap.get(timerKey).path !== path || pageStartTimeMap.get(timerKey).page !== pNum) {
+                    pageStartTimeMap.set(timerKey, { page: pNum, path: path, startTime: now });
+                }
+                const continuousMin = Math.floor((now - pageStartTimeMap.get(timerKey).startTime) / 60000);
+
+                count++;
+                html += `
+                    <div class="user-badge ${statusClass}" onclick="showDetail('${u.user_id}', ${pNum}, '${path}')">
+                        ${(isHot && statusClass !== 'offline') ? '<div class="hot-label">HOT!!</div>' : ''}
+                        <div class="info">
+                            <b>${profile.company_name}</b><br>
+                            <span>${profile.full_name}</span>
+                            <span class="status-text ${textClass}">● ${statusLabel}</span>
+                            <div class="timer">🔥 ${isHot ? '見積ページ' : pNum + 'P'}に ${continuousMin}分滞在 (更新:${diffSec}秒前)</div>
+                        </div>
+                        <div class="page-circle">${isHot ? '📄' : pNum}</div>
+                    </div>`;
             }
 
-            if (!pageStartTimeMap.has(u.user_id) || pageStartTimeMap.get(u.user_id).page !== pNum || pageStartTimeMap.get(u.user_id).path !== path) {
-                pageStartTimeMap.set(u.user_id, { page: pNum, path: path, startTime: now });
-            }
-            const start = pageStartTimeMap.get(u.user_id).startTime;
-            const continuousMin = Math.floor((now - start) / 60000);
+            document.getElementById('user-count').textContent = count;
+            list.innerHTML = html || '<p style="color:#999">現在、閲覧中のユーザーはいません。</p>';
 
-            count++;
-            html += `
-                <div class="user-badge ${statusClass}" onclick="showDetail('${u.user_id}', ${pNum}, '${path}')">
-                    ${(isHot && statusClass !== 'offline') ? '<div class="hot-label">HOT!!</div>' : ''}
-                    <div class="info">
-                        <b>${profile.company_name}</b><br>
-                        <span>${profile.full_name}</span>
-                        <span class="status-text ${textClass}">● ${statusLabel}</span>
-                        <div class="timer">🔥 ${isHot ? '見積ページ' : pNum + 'P'}に ${continuousMin}分滞在 (更新:${diffSec}秒前)</div>
-                    </div>
-                    <div class="page-circle">${isHot ? '📄' : pNum}</div>
-                </div>`;
-        } // ここで正しく for ループを閉じる
-
-        document.getElementById('user-count').textContent = count;
-        list.innerHTML = html || '<p style="color:#999">現在、閲覧中のユーザーはいません。</p>';
+        } catch (error) {
+            console.error("Render Error:", error);
+        } finally {
+            isRendering = false; // ロック解除
+        }
     }
 
+    // モーダル表示などの他の関数はそのまま
     window.showDetail = async (userId, currentPage, path) => {
         const profile = await getProfile(userId);
+        if (!profile) return;
+
         const { data: history } = await supabase
             .from('top_3_stay_history')
             .select('*')
@@ -214,8 +245,8 @@
     };
 
     window.closeModal = () => { document.getElementById('userModal').style.display = 'none'; };
-    setInterval(renderPresence, 10000);
+
+    // インターバルを少し長めにして負荷を軽減
+    setInterval(renderPresence, 5000); 
     initPresence();
 </script>
-</body>
-</html>
