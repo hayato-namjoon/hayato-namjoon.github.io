@@ -228,6 +228,7 @@
             currentLastSeen = Date.now();
         }
 
+        console.log(`🚀 送信準備: ページ=${pageNum}, タイムスタンプ=${currentLastSeen}`);
         isTracking = true; // 送信ロック開始
         try {
             await presenceChannel.track({ 
