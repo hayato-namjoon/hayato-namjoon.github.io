@@ -155,17 +155,20 @@
 
             for (const u of currentOnlineUsers) {
                 const profile = profileCache.get(u.user_id);
-                
                 if (!profile) continue;
                 if (filter && !profile.company_name.toLowerCase().includes(filter)) continue;
 
-                // 数値として確実に扱う
                 const pNum = parseInt(u.current_page) || 1;
                 const path = u.current_path || '';
                 const lastSeen = Number(u.last_seen) || now;
                 const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
-                const isHot = (path === 'estimate.html');
+                
+                // ★ 修正点1: 120秒(2分)以上通信がないユーザーは完全に離脱したとみなし、画面から消去する
+                if (diffSec > 120) {
+                    continue; 
+                }
 
+                const isHot = (path === 'estimate.html');
                 let statusLabel = "";
                 let statusClass = "online";
                 let textClass = "";
@@ -188,7 +191,7 @@
                     textClass = "text-online";
                 }
 
-                // タイマー管理（ページが変わったらリセット）
+                // タイマー管理
                 const timerKey = u.user_id;
                 const timerData = pageStartTimeMap.get(timerKey);
                 if (!timerData || timerData.page !== pNum || timerData.path !== path) {
