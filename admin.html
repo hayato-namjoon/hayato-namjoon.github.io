@@ -114,14 +114,11 @@
         channel.on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
             const users = Object.values(state).flat();
-
-            // ★ここを追加：届いた全データを覗き見する
-            console.log("📥 Supabaseから届いた全データ:", users);
             
             // 1. 全データを「更新時刻(last_seen)が新しい順」に並べる
             users.sort((a, b) => (Number(b.last_seen) || 0) - (Number(a.last_seen) || 0));
             
-            // 2. 新しい順のリストから、各ユーザーの最新状態だけを抽出する（古いタブのゴースト排除）
+            // 2. 新しい順のリストから、各ユーザーの最新状態だけを抽出する
             const uniqueMap = new Map();
             for (const u of users) {
                 if (!uniqueMap.has(u.user_id)) {
@@ -129,9 +126,6 @@
                 }
             }
             const uniqueUsers = Array.from(uniqueMap.values());
-
-            // ★ここを追加：重複を弾いた後の最終結果
-            console.log("✅ 画面に採用されたデータ:", uniqueUsers);
             
             // 3. 表示用のソート（見積中を一番上、次に新しい順）
             uniqueUsers.sort((a, b) => {
@@ -161,25 +155,29 @@
 
             for (const u of currentOnlineUsers) {
                 const profile = profileCache.get(u.user_id);
+                
                 if (!profile) continue;
                 if (filter && !profile.company_name.toLowerCase().includes(filter)) continue;
 
+                // 数値として確実に扱う
                 const pNum = parseInt(u.current_page) || 1;
                 const path = u.current_path || '';
                 const lastSeen = Number(u.last_seen) || now;
                 const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
                 
-                // ★ 修正点1: 7200秒(120分)以上通信がないユーザーは完全に離脱したとみなし、画面から消去する
+                // ★ 要件反映：120分（7200秒）以上経過したユーザーをリストから完全に消去
                 if (diffSec > 7200) {
                     continue; 
                 }
 
                 const isHot = (path === 'estimate.html');
+
                 let statusLabel = "";
                 let statusClass = "online";
                 let textClass = "";
 
-                if (diffSec > 60) {
+                // ★ 要件反映：3分（180秒）通信が途絶えたら「離脱の可能性」と表示
+                if (diffSec > 180) {
                     statusLabel = "離脱の可能性";
                     statusClass = "offline";
                     textClass = "text-offline";
@@ -197,13 +195,16 @@
                     textClass = "text-online";
                 }
 
-                // タイマー管理
+                // タイマー管理（ページやファイルが変わったらリセット）
                 const timerKey = u.user_id;
                 const timerData = pageStartTimeMap.get(timerKey);
                 if (!timerData || timerData.page !== pNum || timerData.path !== path) {
                     pageStartTimeMap.set(timerKey, { page: pNum, path: path, startTime: now });
                 }
                 const continuousMin = Math.floor((now - pageStartTimeMap.get(timerKey).startTime) / 60000);
+
+                // ★ 追加：ファイル名を分かりやすく表示するための変数
+                const fileNameDisplay = isHot ? '見積ページ' : path;
 
                 count++;
                 html += `
@@ -213,7 +214,9 @@
                             <b>${profile.company_name}</b><br>
                             <span>${profile.full_name}</span>
                             <span class="status-text ${textClass}">● ${statusLabel}</span>
-                            <div class="timer">🔥 ${isHot ? '見積ページ' : pNum + 'P'}に ${continuousMin}分滞在 (更新:${diffSec}秒前)</div>
+                            <div class="timer">
+                                📄 <b style="color:var(--primary);">${fileNameDisplay}</b> ${isHot ? '' : `(${pNum}P)`} に ${continuousMin}分滞在 (更新:${diffSec}秒前)
+                            </div>
                         </div>
                         <div class="page-circle">${isHot ? '📄' : pNum}</div>
                     </div>`;
@@ -260,8 +263,10 @@
 
     window.closeModal = () => { document.getElementById('userModal').style.display = 'none'; };
 
+    // 5秒間隔で画面表示を更新
     setInterval(renderPresence, 5000); 
     initPresence();
 </script>
+
 </body>
 </html>
