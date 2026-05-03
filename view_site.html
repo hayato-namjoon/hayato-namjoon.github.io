@@ -103,9 +103,23 @@
         }
     }
 
+
     // ==========================================
     // 3. PDF 描画・操作ロジック
     // ==========================================
+    // ★追加：通信制御用の変数
+    let presenceTimeout = null;
+    let isTracking = false;
+    let pendingTrack = false;
+
+    // ★追加：連続送信を防ぎ、操作が落ち着いてから送信する（デバウンス処理）
+    function triggerPresenceUpdate() {
+        if (presenceTimeout) clearTimeout(presenceTimeout);
+        presenceTimeout = setTimeout(() => {
+            sendPresenceUpdate(true);
+        }, 500); // 0.5秒間操作がなかったら通信を実行
+    }
+
     async function getFitScale(num) {
         if (!container || !pdfDoc) return 1.0;
         const page = await pdfDoc.getPage(num);
@@ -121,12 +135,10 @@
         try {
             const page = await pdfDoc.getPage(num);
             const viewport = page.getViewport({ scale: scale });
-            
             canvas.height = viewport.height;
             canvas.width = viewport.width;
             canvas.style.width = viewport.width + "px";
             canvas.style.height = viewport.height + "px";
-            
             const renderContext = { canvasContext: ctx, viewport: viewport };
             currentRenderTask = page.render(renderContext);
             await currentRenderTask.promise;
@@ -142,12 +154,12 @@
     }
 
     async function updateWithReset() {
+        // ★ 修正：描画を待たずに、ページ番号が変わった瞬間に送信の「予約」をする
+        triggerPresenceUpdate();
+
         scale = await getFitScale(pageNum);
         await renderPage(pageNum);
         if (container) container.scrollTo(0, 0);
-        
-        // ★ ページをめくった時は、強制的に「今アクティブである」として時刻を更新し送信
-        sendPresenceUpdate(true);
     }
 
     async function updateKeepZoom() {
@@ -185,43 +197,45 @@
         presenceChannel.subscribe(status => {
             if (status === 'SUBSCRIBED') {
                 isPresenceReady = true;
-                sendPresenceUpdate(true);
+                triggerPresenceUpdate(); // 接続完了時も予約経由で送信
             }
         });
 
-        // 30秒の定期報告
         setInterval(() => sendPresenceUpdate(), 30000);
 
-        // タブ切り替え時の報告
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
                 setTimeout(() => sendPresenceUpdate(true), 1000);
             } else {
-                sendPresenceUpdate(); // 離脱時は時刻を更新せずステータスだけawayにして送る
+                sendPresenceUpdate(); 
             }
         });
     }
 
-    // forceUpdateが true の時だけ時刻を最新にする最強のロジック
     async function sendPresenceUpdate(forceUpdate = false) {
         if (!isPresenceReady || !presenceChannel) return;
+
+        // ★ 通信中（ロック状態）なら、後でもう一度実行するようにフラグを立てて待機
+        if (isTracking) {
+            pendingTrack = true;
+            return;
+        }
 
         const isVisible = document.visibilityState === 'visible';
         const status = isVisible ? 'online' : 'away';
 
-        // ★ タブが表示されている、または意図的にページをめくった時のみ時刻を更新する。
-        // これにより、非表示のタブが管理画面の表示を邪魔することが一切なくなります。
         if (isVisible || forceUpdate) {
             currentLastSeen = Date.now();
         }
 
+        isTracking = true; // 送信ロック開始
         try {
             await presenceChannel.track({ 
                 user_id: viewerId, 
                 current_page: Number(pageNum), 
                 current_path: PDF_URL.split('/').pop(),
                 status: status,
-                last_seen: currentLastSeen // 記録された時刻を送る
+                last_seen: currentLastSeen
             });
 
             if (status === 'online' && forceUpdate) {
@@ -229,12 +243,17 @@
             }
         } catch (error) {
             console.error("Presence Track Error:", error);
+        } finally {
+            isTracking = false; // 送信ロック解除
+            
+            // ★ 保留されていた送信があれば、ロック解除後に再実行する
+            if (pendingTrack) {
+                pendingTrack = false;
+                sendPresenceUpdate(true);
+            }
         }
     }
 
-    // ==========================================
-    // 起動
-    // ==========================================
     init();
 </script>
 </body>
