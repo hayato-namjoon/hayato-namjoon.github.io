@@ -204,9 +204,15 @@
         // 30秒ごとに定期的に「まだ見てるよ」と報告
         setInterval(sendPresenceUpdate, 30000);
 
-        // 別タブに行っていたユーザーが戻ってきた瞬間に報告
+        // ★ 修正点2: 別タブから戻ってきた瞬間に報告する処理を強化
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') sendPresenceUpdate();
+            if (document.visibilityState === 'visible') {
+                // ネットワーク再接続のラグを考慮し、1秒(1000ミリ秒)待ってから確実に送信する
+                setTimeout(sendPresenceUpdate, 1000);
+            } else {
+                // 離脱した瞬間にも一応「away（離席中）」ステータスを送っておく
+                sendPresenceUpdate();
+            }
         });
     }
 
