@@ -129,6 +129,9 @@
                 }
             }
             const uniqueUsers = Array.from(uniqueMap.values());
+
+            // ★ここを追加：重複を弾いた後の最終結果
+            console.log("✅ 画面に採用されたデータ:", uniqueUsers);
             
             // 3. 表示用のソート（見積中を一番上、次に新しい順）
             uniqueUsers.sort((a, b) => {
