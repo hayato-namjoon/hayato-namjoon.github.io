@@ -114,6 +114,9 @@
         channel.on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
             const users = Object.values(state).flat();
+
+            // ★ここを追加：届いた全データを覗き見する
+            console.log("📥 Supabaseから届いた全データ:", users);
             
             // 1. 全データを「更新時刻(last_seen)が新しい順」に並べる
             users.sort((a, b) => (Number(b.last_seen) || 0) - (Number(a.last_seen) || 0));
