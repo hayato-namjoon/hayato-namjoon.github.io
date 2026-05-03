@@ -118,6 +118,8 @@
     // ==========================================
     // 3. PDF 描画・操作ロジック
     // ==========================================
+    // ★ 修正: 送信予約（triggerPresenceUpdate）を完全に削除し、描画だけに専念させます
+
     async function getFitScale(num) {
         if (!container || !pdfDoc) return 1.0;
         const page = await pdfDoc.getPage(num);
@@ -154,7 +156,7 @@
     }
 
     async function updateWithReset() {
-        triggerPresenceUpdate(); // ★ページが変わった瞬間に0.5秒後の送信を予約
+        // ★ ここでの通信命令は削除。ページ番号(pageNum)を変えるだけでOK
         scale = await getFitScale(pageNum);
         await renderPage(pageNum);
         if (container) container.scrollTo(0, 0);
@@ -178,8 +180,13 @@
     });
 
     // ==========================================
-    // 4. Presence（リアルタイム通信）ロジック
+    // 4. Presence（リアルタイム通信）ロジック [完全リニューアル]
     // ==========================================
+    let isPresenceReady = false;
+    let isSyncing = false;
+    let lastTrackedPage = 0;    // 最後に送信成功したページ番号
+    let lastTrackedTime = 0;    // 最後に送信成功した時刻
+
     async function logToDB(p) {
         if (!viewerId) return;
         await supabase.from('page_views').insert([{ 
@@ -189,57 +196,71 @@
         }]);
     }
 
+    // 毎秒実行される監視ループ（ネットワーク通信は必要な時だけ行う）
+    function checkAndSync() {
+        if (!isPresenceReady || !presenceChannel) return;
+
+        const now = Date.now();
+        const status = document.visibilityState === 'visible' ? 'online' : 'away';
+        
+        // 送信すべき条件を判定
+        const pageChanged = (lastTrackedPage !== pageNum); // ページが変わったか？
+        const timeToHeartbeat = (now - lastTrackedTime > 30000); // 30秒以上経過したか？
+
+        if (pageChanged || timeToHeartbeat) {
+            executeTrack(status, pageChanged);
+        }
+    }
+
+    async function executeTrack(status, isPageChanged) {
+        // 送信中ならブロック（次回の1秒ループに回す）
+        if (isSyncing) return; 
+        isSyncing = true;
+
+        const trackingPage = pageNum; // 送信する瞬間のページ番号を固定
+
+        try {
+            await presenceChannel.track({ 
+                user_id: viewerId, 
+                current_page: Number(trackingPage), 
+                current_path: PDF_URL.split('/').pop(),
+                status: status,
+                last_seen: Date.now()
+            });
+
+            // ★ 送信に「成功」した時だけ、記憶を更新する
+            lastTrackedPage = trackingPage;
+            lastTrackedTime = Date.now();
+
+            if (status === 'online' && isPageChanged) {
+                logToDB(trackingPage);
+            }
+        } catch (error) {
+            console.error("Presence Track Error:", error);
+            // ★ エラー時は lastTrackedPage が更新されないため、1秒後のループで自動的に「再送」されます
+        } finally {
+            isSyncing = false; // ロック解除
+        }
+    }
+
     function initPresence() {
         presenceChannel = supabase.channel('online-users');
 
         presenceChannel.subscribe(status => {
             if (status === 'SUBSCRIBED') {
                 isPresenceReady = true;
-                triggerPresenceUpdate();
+                executeTrack('online', true); // 接続直後に初回送信
             }
         });
 
-        setInterval(() => sendPresenceUpdate(), 30000);
+        // ★ 毎秒1回、「送るべき変更があるか」を監視する（最強の通信安定化処理）
+        setInterval(checkAndSync, 1000);
 
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                setTimeout(() => sendPresenceUpdate(true), 1000);
-            } else {
-                sendPresenceUpdate(); 
-            }
-        });
-    }
-
-    // ★ 修正点2: asyncロックを外し、Promiseのthen/catchを使って「投げっぱなし」にする
-    function sendPresenceUpdate(forceUpdate = false) {
-        if (!isPresenceReady || !presenceChannel) return;
-
-        const isVisible = document.visibilityState === 'visible';
-        const status = isVisible ? 'online' : 'away';
-
-        if (isVisible || forceUpdate) {
-            currentLastSeen = Date.now();
-        }
-
-        // awaitを使わずに非同期で送信する（ここでエラーが起きてもシステムは固まらない）
-        presenceChannel.track({ 
-            user_id: viewerId, 
-            current_page: Number(pageNum), 
-            current_path: PDF_URL.split('/').pop(),
-            status: status,
-            last_seen: currentLastSeen
-        }).then(() => {
-            // 送信が成功した時だけログに書き込む
-            if (status === 'online' && forceUpdate) {
-                logToDB(pageNum);
-            }
-        }).catch(error => {
-            // 通信が混線・失敗した場合はエラーだけ出して次に備える
-            console.error("Presence Track Error:", error);
-        });
+        // タブ切り替え時もチェック
+        document.addEventListener('visibilitychange', checkAndSync);
     }
 
     init();
-</script>
+    </script>
 </body>
 </html>
