@@ -25,7 +25,7 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
             display: block; 
             cursor: pointer;
-            margin: auto; /* 上下中央を維持しつつスクロールを可能にする設定 */
+            margin: auto; 
         }
     </style>
 </head>
@@ -51,35 +51,32 @@
     <canvas id="pdf-render"></canvas>
 </div>
 
-
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
     // ==========================================
-    // 1. 初期設定（※ご自身のキーに必ず書き換えてください）
+    // 1. 初期設定
     // ==========================================
-    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; 
-    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; 
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; // ご自身のURLを入力
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; // ご自身のKEYを入力
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     const PDF_URL = './catalog_1.pdf'; 
 
-    // ==========================================
-    // 2. 変数定義
-    // ==========================================
     let pdfDoc = null, pageNum = 1, isRendering = false, scale = 1.0, currentRenderTask = null;
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
     const container = document.getElementById('pdf-container');
     
-    // CookieからユーザーID取得
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
-    // Presence (リアルタイム通信) 用の変数
     let presenceChannel = null;
     let isPresenceReady = false;
+    
+    // ★追加：各タブの最終アクティブ時刻を記憶する変数
+    let currentLastSeen = Date.now(); 
 
     // ==========================================
-    // 3. メイン初期化処理
+    // 2. メイン初期化処理
     // ==========================================
     async function init() {
         if (!viewerId) { window.location.href = 'entry.html'; return; }
@@ -87,7 +84,6 @@
         const urlParams = new URLSearchParams(window.location.search);
         const targetPage = parseInt(urlParams.get('page'));
 
-        // ★ 通信チャネルをPDF読み込みより「先」に準備する
         initPresence();
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -96,12 +92,10 @@
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;
             
-            // パラメータでページ指定があれば上書き
             if (targetPage && targetPage > 0 && targetPage <= pdfDoc.numPages) {
                 pageNum = targetPage;
             }
             
-            // 初回描画（この中で初回送信も実行されます）
             await updateWithReset();
             
         } catch (e) {
@@ -110,7 +104,7 @@
     }
 
     // ==========================================
-    // 4. PDF 描画・操作ロジック
+    // 3. PDF 描画・操作ロジック
     // ==========================================
     async function getFitScale(num) {
         if (!container || !pdfDoc) return 1.0;
@@ -118,9 +112,7 @@
         const unscaledViewport = page.getViewport({ scale: 1.0 });
         const availableWidth = container.clientWidth - 40;
         const availableHeight = container.clientHeight - 40;
-        const scaleW = availableWidth / unscaledViewport.width;
-        const scaleH = availableHeight / unscaledViewport.height;
-        return Math.min(scaleW, scaleH);
+        return Math.min(availableWidth / unscaledViewport.width, availableHeight / unscaledViewport.height);
     }
 
     async function renderPage(num) {
@@ -139,7 +131,6 @@
             currentRenderTask = page.render(renderContext);
             await currentRenderTask.promise;
             
-            // UIの文字を更新
             document.getElementById('page-num').textContent = num;
             document.getElementById('zoom-percent').textContent = `${Math.round(scale * 100)}%`;
         } catch (err) {
@@ -150,22 +141,19 @@
         }
     }
 
-    // ページをめくった時の処理
     async function updateWithReset() {
         scale = await getFitScale(pageNum);
         await renderPage(pageNum);
         if (container) container.scrollTo(0, 0);
         
-        // ★ ページが変わった瞬間に最新情報を強制送信
-        sendPresenceUpdate();
+        // ★ ページをめくった時は、強制的に「今アクティブである」として時刻を更新し送信
+        sendPresenceUpdate(true);
     }
 
-    // ズーム時の処理（ページ送信は不要）
     async function updateKeepZoom() {
         await renderPage(pageNum);
     }
 
-    // 操作ボタン等のイベント
     document.getElementById('zoom-in').onclick = () => { scale *= 1.2; updateKeepZoom(); };
     document.getElementById('zoom-out').onclick = () => { scale /= 1.2; updateKeepZoom(); };
 
@@ -180,7 +168,7 @@
     });
 
     // ==========================================
-    // 5. データベースログ・Presence（リアルタイム通信）
+    // 4. Presence（リアルタイム通信）ロジック
     // ==========================================
     async function logToDB(p) {
         if (!viewerId) return;
@@ -197,42 +185,46 @@
         presenceChannel.subscribe(status => {
             if (status === 'SUBSCRIBED') {
                 isPresenceReady = true;
-                sendPresenceUpdate(); // 接続完了時に現在の状態を送る
+                sendPresenceUpdate(true);
             }
         });
 
-        // 30秒ごとに定期的に「まだ見てるよ」と報告
-        setInterval(sendPresenceUpdate, 30000);
+        // 30秒の定期報告
+        setInterval(() => sendPresenceUpdate(), 30000);
 
-        // ★ 修正点2: 別タブから戻ってきた瞬間に報告する処理を強化
+        // タブ切り替え時の報告
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                // ネットワーク再接続のラグを考慮し、1秒(1000ミリ秒)待ってから確実に送信する
-                setTimeout(sendPresenceUpdate, 1000);
+                setTimeout(() => sendPresenceUpdate(true), 1000);
             } else {
-                // 離脱した瞬間にも一応「away（離席中）」ステータスを送っておく
-                sendPresenceUpdate();
+                sendPresenceUpdate(); // 離脱時は時刻を更新せずステータスだけawayにして送る
             }
         });
     }
 
-    async function sendPresenceUpdate() {
-        // まだ接続できていない場合は無視
+    // forceUpdateが true の時だけ時刻を最新にする最強のロジック
+    async function sendPresenceUpdate(forceUpdate = false) {
         if (!isPresenceReady || !presenceChannel) return;
 
-        const status = document.visibilityState === 'visible' ? 'online' : 'away';
+        const isVisible = document.visibilityState === 'visible';
+        const status = isVisible ? 'online' : 'away';
+
+        // ★ タブが表示されている、または意図的にページをめくった時のみ時刻を更新する。
+        // これにより、非表示のタブが管理画面の表示を邪魔することが一切なくなります。
+        if (isVisible || forceUpdate) {
+            currentLastSeen = Date.now();
+        }
 
         try {
             await presenceChannel.track({ 
                 user_id: viewerId, 
-                current_page: Number(pageNum), // ★ 数値として確実にページを送る
+                current_page: Number(pageNum), 
                 current_path: PDF_URL.split('/').pop(),
                 status: status,
-                last_seen: Date.now() // ★ 毎度新しい時刻を送ることで管理画面を更新させる
+                last_seen: currentLastSeen // 記録された時刻を送る
             });
 
-            // 画面を見ている時だけDBにログを残す
-            if (status === 'online') {
+            if (status === 'online' && forceUpdate) {
                 logToDB(pageNum);
             }
         } catch (error) {
@@ -245,8 +237,5 @@
     // ==========================================
     init();
 </script>
-
-    // 起動
-    init();
-</script>
+</body>
 </html>
