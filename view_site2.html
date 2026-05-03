@@ -6,14 +6,27 @@
     <title>資料閲覧システム</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { margin: 0; background: #525659; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; }
-        .toolbar { background: #2c3e50; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
-        .pager { display: flex; align-items: center; gap: 15px; }
+        body { margin: 0; background: #525659; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; overflow: hidden; }
+        .toolbar { background: #2c3e50; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); z-index: 100; }
+        .zoom-controls, .page-display { display: flex; align-items: center; gap: 15px; }
         button { background: #3498db; border: none; color: white; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
-        button:disabled { background: #7f8c8d; }
         .back-btn { background: #95a5a6; }
-        #pdf-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
-        canvas { background: white; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        
+        #pdf-container {
+            flex-grow: 1; 
+            overflow: auto; 
+            display: flex; 
+            justify-content: center; 
+            padding: 20px; 
+            background: #525659; 
+        }
+        canvas { 
+            background: white; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            display: block; 
+            cursor: pointer;
+            margin: auto; 
+        }
     </style>
 </head>
 <body>
@@ -21,14 +34,17 @@
 <div class="toolbar">
     <div>
         <button class="back-btn" onclick="location.href='choice_catalog.html'">← 戻る</button>
-        <span id="welcome-msg" style="margin-left: 10px;">認証中...</span>
     </div>
-    <div class="pager">
-        <button id="prev-btn">前へ</button>
+
+    <div class="page-display">
         <span>Page: <span id="page-num">1</span> / <span id="page-count">-</span></span>
-        <button id="next-btn">次へ</button>
     </div>
-    <div style="width:100px"></div>
+    
+    <div class="zoom-controls">
+        <button id="zoom-out">－</button>
+        <span id="zoom-percent" style="min-width: 50px; text-align: center;">100%</span>
+        <button id="zoom-in">＋</button>
+    </div>
 </div>
 
 <div id="pdf-container">
@@ -38,104 +54,189 @@
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-    // --- 設定 (プロジェクトに合わせて書き換えてください) ---
-    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
+    // ==========================================
+    // 1. 初期設定
+    // ==========================================
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; // ご自身のURLを入力
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; // ご自身のKEYを入力
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-    
-    // カタログ1ならこれ、カタログ2なら './test_page_check_file2.pdf' 等に書き換え
     const PDF_URL = './catalog_2.pdf'; 
 
-    let pdfDoc = null, pageNum = 1, isRendering = false;
+    let pdfDoc = null, pageNum = 1, isRendering = false, scale = 1.0, currentRenderTask = null;
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
+    const container = document.getElementById('pdf-container');
     
-    const viewerId = new URLSearchParams(window.location.search).get('id') || document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
+    const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
+    let presenceChannel = null;
+    let isPresenceReady = false;
+    
+    // ★追加：各タブの最終アクティブ時刻を記憶する変数
+    let currentLastSeen = Date.now(); 
+
+    // ★ 修正点1: 危険な isTracking などを削除し、タイマー予約のみ残す
+    let presenceTimeout = null;
+
+    function triggerPresenceUpdate() {
+        if (presenceTimeout) clearTimeout(presenceTimeout);
+        presenceTimeout = setTimeout(() => {
+            sendPresenceUpdate(true);
+        }, 500); // 0.5秒後に送信（これで連打対策は十分です）
+    }
+    
+
+    // ==========================================
+    // 2. メイン初期化処理
+    // ==========================================
     async function init() {
-        // IDがない場合は登録画面へ
         if (!viewerId) { window.location.href = 'entry.html'; return; }
 
-        // プロファイル確認（管理者がリセットした場合はここでデータが取れなくなる）
-        const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
-        
-        if (error || !profile) { 
-            console.error("Authentication failed or user deleted.");
-            window.location.href = 'entry.html'; 
-            return; 
-        }
-        
-        document.getElementById('welcome-msg').textContent = `${profile.company_name} ${profile.full_name} 様`;
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetPage = parseInt(urlParams.get('page'));
 
-        // PDF読み込み設定
+        initPresence();
+
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+        
         try {
             pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
             document.getElementById('page-count').textContent = pdfDoc.numPages;
             
-            const startPage = parseInt(new URLSearchParams(window.location.search).get('page')) || 1;
-            pageNum = Math.min(Math.max(startPage, 1), pdfDoc.numPages);
-
-            renderPage(pageNum);
-            startPresence();
+            if (targetPage && targetPage > 0 && targetPage <= pdfDoc.numPages) {
+                pageNum = targetPage;
+            }
+            
+            await updateWithReset();
+            
         } catch (e) {
             console.error("PDF Load Error:", e);
-            alert("PDFが読み込めません。ファイルパスを確認してください。");
         }
     }
 
+
+    // ==========================================
+    // 3. PDF 描画・操作ロジック
+    // ==========================================
+    async function getFitScale(num) {
+        if (!container || !pdfDoc) return 1.0;
+        const page = await pdfDoc.getPage(num);
+        const unscaledViewport = page.getViewport({ scale: 1.0 });
+        const availableWidth = container.clientWidth - 40;
+        const availableHeight = container.clientHeight - 40;
+        return Math.min(availableWidth / unscaledViewport.width, availableHeight / unscaledViewport.height);
+    }
+
+    async function renderPage(num) {
+        if (currentRenderTask) currentRenderTask.cancel();
+        isRendering = true;
+        try {
+            const page = await pdfDoc.getPage(num);
+            const viewport = page.getViewport({ scale: scale });
+            
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            canvas.style.width = viewport.width + "px";
+            canvas.style.height = viewport.height + "px";
+            
+            const renderContext = { canvasContext: ctx, viewport: viewport };
+            currentRenderTask = page.render(renderContext);
+            await currentRenderTask.promise;
+            
+            document.getElementById('page-num').textContent = num;
+            document.getElementById('zoom-percent').textContent = `${Math.round(scale * 100)}%`;
+        } catch (err) {
+            if (err.name !== 'RenderingCancelledException') console.error(err);
+        } finally {
+            isRendering = false;
+            currentRenderTask = null;
+        }
+    }
+
+    async function updateWithReset() {
+        triggerPresenceUpdate(); // ★ページが変わった瞬間に0.5秒後の送信を予約
+        scale = await getFitScale(pageNum);
+        await renderPage(pageNum);
+        if (container) container.scrollTo(0, 0);
+    }
+
+    async function updateKeepZoom() {
+        await renderPage(pageNum);
+    }
+
+    document.getElementById('zoom-in').onclick = () => { scale *= 1.2; updateKeepZoom(); };
+    document.getElementById('zoom-out').onclick = () => { scale /= 1.2; updateKeepZoom(); };
+
+    canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x > rect.width * 0.7) { 
+            if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; updateWithReset(); } 
+        } else if (x < rect.width * 0.3) { 
+            if (pageNum > 1 && !isRendering) { pageNum--; updateWithReset(); } 
+        }
+    });
+
+    // ==========================================
+    // 4. Presence（リアルタイム通信）ロジック
+    // ==========================================
     async function logToDB(p) {
-        // DBへの生存記録（管理者がリセットした後はこのリクエストも失敗する）
-        const { error } = await supabase.from('page_views').insert([{ 
+        if (!viewerId) return;
+        await supabase.from('page_views').insert([{ 
             user_id: viewerId, 
             file_name: PDF_URL.split('/').pop(), 
             current_page: p 
         }]);
-
-        // もしDB記録時にエラー（ユーザー不在等）が出たら追い出し
-        if (error) {
-            console.log("Session lost. Redirecting...");
-            window.location.href = 'entry.html';
-        }
     }
 
-    function startPresence() {
-        const channel = supabase.channel('online-users');
-        const track = () => {
-            // リアルタイムプレゼンス
-            channel.track({ 
-                user_id: viewerId, 
-                current_page: pageNum, 
-                current_path: PDF_URL.split('/').pop() 
-            });
-            // ログ記録
-            logToDB(pageNum);
-        };
-        channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
-        setInterval(track, 30000); // 30秒ごとに生存確認
-        window.forceTrack = track;
-    }
+    function initPresence() {
+        presenceChannel = supabase.channel('online-users');
 
-    function renderPage(num) {
-        isRendering = true;
-        pdfDoc.getPage(num).then(page => {
-            const viewport = page.getViewport({ scale: 1.5 });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            page.render({ canvasContext: ctx, viewport: viewport }).promise.then(() => {
-                isRendering = false;
-                document.getElementById('page-num').textContent = num;
-            });
+        presenceChannel.subscribe(status => {
+            if (status === 'SUBSCRIBED') {
+                isPresenceReady = true;
+                triggerPresenceUpdate();
+            }
+        });
+
+        setInterval(() => sendPresenceUpdate(), 30000);
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                setTimeout(() => sendPresenceUpdate(true), 1000);
+            } else {
+                sendPresenceUpdate(); 
+            }
         });
     }
 
-    document.getElementById('prev-btn').onclick = () => { if (pageNum > 1 && !isRendering) { pageNum--; update(); } };
-    document.getElementById('next-btn').onclick = () => { if (pageNum < pdfDoc.numPages && !isRendering) { pageNum++; update(); } };
+    // ★ 修正点2: asyncロックを外し、Promiseのthen/catchを使って「投げっぱなし」にする
+    function sendPresenceUpdate(forceUpdate = false) {
+        if (!isPresenceReady || !presenceChannel) return;
 
-    function update() {
-        renderPage(pageNum);
-        // ページ遷移のたびに即座に位置を更新
-        if (window.forceTrack) window.forceTrack();
+        const isVisible = document.visibilityState === 'visible';
+        const status = isVisible ? 'online' : 'away';
+
+        if (isVisible || forceUpdate) {
+            currentLastSeen = Date.now();
+        }
+
+        // awaitを使わずに非同期で送信する（ここでエラーが起きてもシステムは固まらない）
+        presenceChannel.track({ 
+            user_id: viewerId, 
+            current_page: Number(pageNum), 
+            current_path: PDF_URL.split('/').pop(),
+            status: status,
+            last_seen: currentLastSeen
+        }).then(() => {
+            // 送信が成功した時だけログに書き込む
+            if (status === 'online' && forceUpdate) {
+                logToDB(pageNum);
+            }
+        }).catch(error => {
+            // 通信が混線・失敗した場合はエラーだけ出して次に備える
+            console.error("Presence Track Error:", error);
+        });
     }
 
     init();
