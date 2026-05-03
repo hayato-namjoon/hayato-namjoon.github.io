@@ -163,8 +163,8 @@
                 const lastSeen = Number(u.last_seen) || now;
                 const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
                 
-                // ★ 修正点1: 120秒(2分)以上通信がないユーザーは完全に離脱したとみなし、画面から消去する
-                if (diffSec > 120) {
+                // ★ 修正点1: 7200秒(120分)以上通信がないユーザーは完全に離脱したとみなし、画面から消去する
+                if (diffSec > 7200) {
                     continue; 
                 }
 
