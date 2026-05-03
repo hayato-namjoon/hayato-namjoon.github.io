@@ -55,39 +55,33 @@
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
     // ==========================================
-    // 1. 初期設定
+    // 1. 初期設定（※必ずご自身のURLとKEYに書き換えてください）
     // ==========================================
-    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; // ご自身のURLを入力
-    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; // ご自身のKEYを入力
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; 
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     const PDF_URL = './catalog_2.pdf'; 
 
+    // ==========================================
+    // 2. 変数定義
+    // ==========================================
     let pdfDoc = null, pageNum = 1, isRendering = false, scale = 1.0, currentRenderTask = null;
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
     const container = document.getElementById('pdf-container');
     
+    // CookieからユーザーID取得
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
+    // Presence (リアルタイム通信) 用の変数
     let presenceChannel = null;
     let isPresenceReady = false;
-    
-    // ★追加：各タブの最終アクティブ時刻を記憶する変数
-    let currentLastSeen = Date.now(); 
-
-    // ★ 修正点1: 危険な isTracking などを削除し、タイマー予約のみ残す
-    let presenceTimeout = null;
-
-    function triggerPresenceUpdate() {
-        if (presenceTimeout) clearTimeout(presenceTimeout);
-        presenceTimeout = setTimeout(() => {
-            sendPresenceUpdate(true);
-        }, 500); // 0.5秒後に送信（これで連打対策は十分です）
-    }
-    
+    let isSyncing = false;       // 通信ロック用フラグ
+    let lastTrackedPage = 0;     // 最後に送信「成功」したページ番号
+    let lastTrackedTime = 0;     // 最後に送信「成功」した時刻
 
     // ==========================================
-    // 2. メイン初期化処理
+    // 3. メイン初期化処理
     // ==========================================
     async function init() {
         if (!viewerId) { window.location.href = 'entry.html'; return; }
@@ -95,6 +89,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const targetPage = parseInt(urlParams.get('page'));
 
+        // 通信の監視ループを開始
         initPresence();
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -114,12 +109,9 @@
         }
     }
 
-
     // ==========================================
-    // 3. PDF 描画・操作ロジック
+    // 4. PDF 描画・操作ロジック（通信を含めない）
     // ==========================================
-    // ★ 修正: 送信予約（triggerPresenceUpdate）を完全に削除し、描画だけに専念させます
-
     async function getFitScale(num) {
         if (!container || !pdfDoc) return 1.0;
         const page = await pdfDoc.getPage(num);
@@ -156,7 +148,7 @@
     }
 
     async function updateWithReset() {
-        // ★ ここでの通信命令は削除。ページ番号(pageNum)を変えるだけでOK
+        // ★ ページ番号を更新して描画するだけ（送信は監視ループに任せる）
         scale = await getFitScale(pageNum);
         await renderPage(pageNum);
         if (container) container.scrollTo(0, 0);
@@ -180,13 +172,8 @@
     });
 
     // ==========================================
-    // 4. Presence（リアルタイム通信）ロジック [完全リニューアル]
+    // 5. リアルタイム通信ロジック（監視・ステート同期方式）
     // ==========================================
-    let isPresenceReady = false;
-    let isSyncing = false;
-    let lastTrackedPage = 0;    // 最後に送信成功したページ番号
-    let lastTrackedTime = 0;    // 最後に送信成功した時刻
-
     async function logToDB(p) {
         if (!viewerId) return;
         await supabase.from('page_views').insert([{ 
@@ -196,28 +183,28 @@
         }]);
     }
 
-    // 毎秒実行される監視ループ（ネットワーク通信は必要な時だけ行う）
+    // 毎秒実行され、送るべきデータがあるかチェックする関数
     function checkAndSync() {
         if (!isPresenceReady || !presenceChannel) return;
 
         const now = Date.now();
         const status = document.visibilityState === 'visible' ? 'online' : 'away';
         
-        // 送信すべき条件を判定
-        const pageChanged = (lastTrackedPage !== pageNum); // ページが変わったか？
-        const timeToHeartbeat = (now - lastTrackedTime > 30000); // 30秒以上経過したか？
+        // 最後に送ったページと今のページが違う、または30秒以上送っていない場合は送信
+        const pageChanged = (lastTrackedPage !== pageNum); 
+        const timeToHeartbeat = (now - lastTrackedTime > 30000); 
 
         if (pageChanged || timeToHeartbeat) {
             executeTrack(status, pageChanged);
         }
     }
 
+    // 実際にSupabaseに送信する関数
     async function executeTrack(status, isPageChanged) {
-        // 送信中ならブロック（次回の1秒ループに回す）
-        if (isSyncing) return; 
+        if (isSyncing) return; // 既に送信中なら今回は見送る（1秒後に再チェックされる）
         isSyncing = true;
 
-        const trackingPage = pageNum; // 送信する瞬間のページ番号を固定
+        const trackingPage = pageNum; // 送信する時点のページ番号を記録
 
         try {
             await presenceChannel.track({ 
@@ -228,18 +215,20 @@
                 last_seen: Date.now()
             });
 
-            // ★ 送信に「成功」した時だけ、記憶を更新する
+            // ★ Supabaseに確実に届いた場合のみ記憶を更新する
             lastTrackedPage = trackingPage;
             lastTrackedTime = Date.now();
 
+            // オンラインでページが変わった時だけDBにも履歴を残す
             if (status === 'online' && isPageChanged) {
                 logToDB(trackingPage);
             }
         } catch (error) {
             console.error("Presence Track Error:", error);
-            // ★ エラー時は lastTrackedPage が更新されないため、1秒後のループで自動的に「再送」されます
+            // ★ エラーが起きると lastTrackedPage が更新されないため、
+            // 1秒後の checkAndSync が「まだ送れていない！」と判断し自動で再送します
         } finally {
-            isSyncing = false; // ロック解除
+            isSyncing = false;
         }
     }
 
@@ -249,18 +238,19 @@
         presenceChannel.subscribe(status => {
             if (status === 'SUBSCRIBED') {
                 isPresenceReady = true;
-                executeTrack('online', true); // 接続直後に初回送信
+                executeTrack('online', true); // 接続完了時に初回送信
             }
         });
 
-        // ★ 毎秒1回、「送るべき変更があるか」を監視する（最強の通信安定化処理）
+        // 1秒ごとに「更新すべきか」をチェックし続ける
         setInterval(checkAndSync, 1000);
 
-        // タブ切り替え時もチェック
+        // タブ切り替え時にもチェックを走らせる
         document.addEventListener('visibilitychange', checkAndSync);
     }
 
+    // 起動
     init();
-    </script>
+</script>
 </body>
 </html>
