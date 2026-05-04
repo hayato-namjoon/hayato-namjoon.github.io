@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>営業分析ダッシュボード</title>
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --light: #f4f7f6; --hot: #e74c3c; --green: #2ecc71; --gray: #95a5a6; --orange: #f39c12; }
+        :root { --primary: #3498db; --dark: #2c3e50; --light: #f4f7f6; --hot: #e74c3c; --green: #2ecc71; --gray: #95a5a6; --orange: #f39c12; --star: #f1c40f; }
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--light); margin: 0; }
         .nav { background: var(--dark); color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
         .container { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
@@ -21,6 +21,7 @@
             border-radius: 6px; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             position: relative;
         }
+        .user-badge:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
         .user-badge.online { border-left-color: var(--green); }
         .user-badge.away { border-left-color: var(--orange); }
         .user-badge.hot-user { border: 2px solid var(--hot); border-left: 8px solid var(--hot); background: #fff5f5; }
@@ -29,7 +30,7 @@
         .info b { font-size: 1.1em; color: var(--dark); }
         .status-text { font-size: 0.85em; font-weight: bold; margin-top: 5px; display: block; }
         .timer { color: #7f8c8d; font-size: 0.8em; margin-top: 3px; }
-        .page-circle { background: var(--primary); color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2em; }
+        .page-circle { background: var(--primary); color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2em; flex-shrink: 0; }
         .hot-user .page-circle { background: var(--hot); }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; }
@@ -43,21 +44,21 @@
         .text-offline { color: var(--gray); }
         .text-hot { color: var(--hot); font-weight: bold; }
 
-        /* --- 予測バッジと未登録テキストのスタイル --- */
-        .predict-badge {
-            font-size: 0.7em;
-            background-color: #f39c12; 
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 8px;
-            vertical-align: middle;
-            font-weight: normal;
-        }
-        .text-unregistered {
-            color: #95a5a6;
-            font-style: italic;
-        }
+        .predict-badge { font-size: 0.7em; background-color: var(--orange); color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: normal; }
+        .text-unregistered { color: var(--gray); font-style: italic; }
+
+        /* --- 追加：星評価（ラベル）のスタイル --- */
+        .stars-display { color: var(--star); font-size: 1.1em; letter-spacing: 2px; margin-left: 8px; text-shadow: 1px 1px 1px rgba(0,0,0,0.1); }
+        .rating-editor { display: flex; align-items: center; gap: 10px; margin-top: 15px; margin-bottom: 15px; background: #f8f9fa; padding: 10px; border-radius: 8px; }
+        .star-btn { font-size: 1.8em; color: #ddd; cursor: pointer; transition: 0.2s; user-select: none; }
+        .star-btn:hover, .star-btn.active { color: var(--star); }
+        
+        /* --- 追加：最近の動向（右側リスト）のスタイル --- */
+        .recent-list { max-height: 700px; overflow-y: auto; padding-right: 10px; }
+        .recent-item { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s; }
+        .recent-item:hover { background: #f9f9f9; }
+        .recent-item-info { flex-grow: 1; }
+        .recent-item-date { font-size: 0.75em; color: var(--gray); white-space: nowrap; margin-left: 10px; }
     </style>
 </head>
 <body>
@@ -78,10 +79,11 @@
             <div id="presence-list"></div>
         </div>
         <div class="recent-logs">
-            <h3>最近の動向</h3>
+            <h3>これまでの閲覧ユーザー (最新20件)</h3>
             <div class="card">
-                <p style="color:#666; font-size: 0.9em;">※ 見積作成中のユーザーは最優先で表示されます</p>
-                <div id="history-summary"></div>
+                <div id="history-summary" class="recent-list">
+                    <p style="color:#999; text-align:center;">データを読み込んでいます...</p>
+                </div>
             </div>
         </div>
     </div>
@@ -90,15 +92,30 @@
 <div id="userModal" class="modal">
     <div class="modal-content">
         <span class="close-btn" onclick="closeModal()">&times;</span>
-        <h2 id="m-company" style="margin-bottom: 5px;">会社名</h2>
+        <h2 id="m-company" style="margin-bottom: 5px; display: inline-block;">会社名</h2>
+        
+        <!-- ★ 追加：星評価を編集するUI -->
+        <div class="rating-editor">
+            <span style="font-size: 0.9em; font-weight: bold; color: #555;">見込み度:</span>
+            <div id="star-container">
+                <span class="star-btn" onclick="updateLeadScore(1)">★</span>
+                <span class="star-btn" onclick="updateLeadScore(2)">★</span>
+                <span class="star-btn" onclick="updateLeadScore(3)">★</span>
+                <span class="star-btn" onclick="updateLeadScore(4)">★</span>
+                <span class="star-btn" onclick="updateLeadScore(5)">★</span>
+            </div>
+            <span id="rating-save-msg" style="font-size: 0.8em; color: var(--green); margin-left: 10px; display: none;">保存しました</span>
+        </div>
+
         <p id="m-department" style="font-size: 0.9em; color: #7f8c8d; margin-top: 0; margin-bottom: 15px;">部署名</p>
         <p id="m-user" style="font-size: 1.2em; color: var(--primary); font-weight: bold; margin-top: 0;">氏名</p>
         <p id="m-contact">連絡先</p>
+        
         <div class="history-box">
             <strong style="color: #856404;">🏆 過去30日の最長連続滞在TOP3</strong>
             <div id="m-top-3" style="margin-top:15px;"></div>
         </div>
-        <a id="m-sync-link" href="#" target="_blank" class="sync-btn">🔗 同じページを並んで開く</a>
+        <a id="m-sync-link" href="#" target="_blank" class="sync-btn" style="display: none;">🔗 ユーザーと同じページを開く</a>
     </div>
 </div>
 
@@ -113,17 +130,25 @@
     const profileCache = new Map();
     const pageStartTimeMap = new Map(); 
     let currentOnlineUsers = [];
-    let isRendering = false; // 二重起動防止フラグ
+    let isRendering = false;
+    let currentModalUserId = null; // 現在モーダルで開いているユーザーのID
 
     // プロフィール取得（キャッシュ優先）
     async function getProfile(id) {
         if (profileCache.has(id)) return profileCache.get(id);
-        const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
+        const { data } = await supabase.from('profiles').select('*').eq('id', id).single();
         if (data) {
             profileCache.set(id, data);
             return data;
         }
         return null;
+    }
+
+    // 5段階評価の星を描画する関数
+    function renderStars(score) {
+        const rating = parseInt(score) || 0;
+        if (rating === 0) return '';
+        return '★'.repeat(rating) + '☆'.repeat(5 - rating);
     }
 
     function initPresence() {
@@ -132,19 +157,14 @@
             const state = channel.presenceState();
             const users = Object.values(state).flat();
             
-            // 1. 全データを「更新時刻(last_seen)が新しい順」に並べる
             users.sort((a, b) => (Number(b.last_seen) || 0) - (Number(a.last_seen) || 0));
             
-            // 2. 新しい順のリストから、各ユーザーの最新状態だけを抽出する
             const uniqueMap = new Map();
             for (const u of users) {
-                if (!uniqueMap.has(u.user_id)) {
-                    uniqueMap.set(u.user_id, u);
-                }
+                if (!uniqueMap.has(u.user_id)) uniqueMap.set(u.user_id, u);
             }
             const uniqueUsers = Array.from(uniqueMap.values());
             
-            // 3. 表示用のソート（見積中を一番上、次に新しい順）
             uniqueUsers.sort((a, b) => {
                 const aIsHot = a.current_path === 'estimate.html' ? 1 : 0;
                 const bIsHot = b.current_path === 'estimate.html' ? 1 : 0;
@@ -168,13 +188,11 @@
         const now = Date.now();
 
         try {
-            // ★キャッシュを無視して常に最新のプロフィールを取得する
             profileCache.clear(); 
             await Promise.all(currentOnlineUsers.map(u => getProfile(u.user_id)));
 
             for (const u of currentOnlineUsers) {
                 const profile = profileCache.get(u.user_id);
-                
                 if (!profile) continue;
                 if (filter && !profile.company_name.toLowerCase().includes(filter)) continue;
 
@@ -183,37 +201,21 @@
                 const lastSeen = Number(u.last_seen) || now;
                 const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
                 
-                // 120分（7200秒）以上経過したユーザーをリストから完全に消去
-                if (diffSec > 7200) {
-                    continue; 
-                }
+                if (diffSec > 7200) continue; 
 
                 const isHot = (path === 'estimate.html');
+                let statusLabel = "", statusClass = "online", textClass = "";
 
-                let statusLabel = "";
-                let statusClass = "online";
-                let textClass = "";
-
-                // 3分（180秒）通信が途絶えたら「離脱の可能性」と表示
                 if (diffSec > 180) {
-                    statusLabel = "離脱の可能性";
-                    statusClass = "offline";
-                    textClass = "text-offline";
+                    statusLabel = "離脱の可能性"; statusClass = "offline"; textClass = "text-offline";
                 } else if (u.status === 'away') {
-                    statusLabel = "離席中（他タブ）";
-                    statusClass = "away";
-                    textClass = "text-away";
+                    statusLabel = "離席中（他タブ）"; statusClass = "away"; textClass = "text-away";
                 } else if (isHot) {
-                    statusLabel = "見積作成中！";
-                    statusClass = "online hot-user";
-                    textClass = "text-hot";
+                    statusLabel = "見積作成中！"; statusClass = "online hot-user"; textClass = "text-hot";
                 } else {
-                    statusLabel = "閲覧中";
-                    statusClass = "online";
-                    textClass = "text-online";
+                    statusLabel = "閲覧中"; statusClass = "online"; textClass = "text-online";
                 }
 
-                // タイマー管理
                 const timerKey = u.user_id;
                 const timerData = pageStartTimeMap.get(timerKey);
                 if (!timerData || timerData.page !== pNum || timerData.path !== path) {
@@ -222,23 +224,19 @@
                 const continuousMin = Math.floor((now - pageStartTimeMap.get(timerKey).startTime) / 60000);
                 const fileNameDisplay = isHot ? '見積ページ' : path;
 
-                // ★ 会社名の表示分け（未登録・予測・確定）
-                let companyDisplayHtml = '';
-                if (profile.company_name === '未登録') {
-                    companyDisplayHtml = `<span class="text-unregistered">未登録 (入力待ち)</span>`;
-                } else {
-                    companyDisplayHtml = profile.company_name;
-                }
+                let companyDisplayHtml = profile.company_name === '未登録' 
+                    ? `<span class="text-unregistered">未登録 (入力待ち)</span>` 
+                    : profile.company_name;
 
-                // ★ 予測フラグが立っていればバッジを表示
                 const predictBadgeHtml = profile.is_predicted_company ? `<span class="predict-badge">予測</span>` : '';
+                const starsHtml = `<span class="stars-display">${renderStars(profile.lead_score)}</span>`;
 
                 count++;
                 html += `
                     <div class="user-badge ${statusClass}" onclick="showDetail('${u.user_id}', ${pNum}, '${path}')">
                         ${(isHot && statusClass !== 'offline') ? '<div class="hot-label">HOT!!</div>' : ''}
                         <div class="info">
-                            <b>${companyDisplayHtml}</b>${predictBadgeHtml}<br>
+                            <b>${companyDisplayHtml}</b>${predictBadgeHtml}${starsHtml}<br>
                             <span>${profile.full_name === '未登録' ? '' : profile.full_name}</span>
                             <span class="status-text ${textClass}">● ${statusLabel}</span>
                             <div class="timer">
@@ -259,7 +257,48 @@
         }
     }
 
+    // --- ★ 追加：右側の「これまでの閲覧ユーザー（最新20件）」を描画する処理 ---
+    async function fetchRecentUsers() {
+        try {
+            const { data: recentProfiles } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(20);
+
+            const listContainer = document.getElementById('history-summary');
+            let html = '';
+
+            if (recentProfiles && recentProfiles.length > 0) {
+                for (const profile of recentProfiles) {
+                    const dateObj = new Date(profile.created_at);
+                    const dateStr = `${dateObj.getMonth()+1}/${dateObj.getDate()} ${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+                    
+                    let companyDisplay = profile.company_name === '未登録' ? '<span class="text-unregistered">未登録</span>' : profile.company_name;
+                    const starsHtml = `<span class="stars-display" style="font-size:0.9em;">${renderStars(profile.lead_score)}</span>`;
+
+                    html += `
+                        <div class="recent-item" onclick="showDetail('${profile.id}', null, null)">
+                            <div class="recent-item-info">
+                                <b style="color: var(--dark);">${companyDisplay}</b> ${starsHtml}<br>
+                                <span style="font-size: 0.85em; color: #555;">${profile.full_name === '未登録' ? profile.email : profile.full_name}</span>
+                            </div>
+                            <div class="recent-item-date">${dateStr}登録</div>
+                        </div>
+                    `;
+                }
+            } else {
+                html = '<p style="color:#999; text-align:center;">履歴がありません</p>';
+            }
+            listContainer.innerHTML = html;
+        } catch (err) {
+            console.error("Recent users fetch error:", err);
+        }
+    }
+
+    // ユーザー詳細モーダル表示
     window.showDetail = async (userId, currentPage, path) => {
+        currentModalUserId = userId; // 現在のIDを保存（星評価の更新用）
         const profile = await getProfile(userId);
         if (!profile) return;
 
@@ -270,13 +309,25 @@
             .order('continuous_minutes', { ascending: false });
 
         document.getElementById('m-company').textContent = profile.company_name;
+        
         const dept = (profile.department && profile.department !== '未登録') ? profile.department : '部署未登録';
         document.getElementById('m-department').textContent = dept;
+        
         document.getElementById('m-user').textContent = profile.full_name;
         document.getElementById('m-contact').textContent = `${profile.email} / ${profile.phone}`;
         
-        const targetUrl = path === 'estimate.html' ? 'estimate.html' : `view_site.html?page=${currentPage}`;
-        document.getElementById('m-sync-link').href = `${targetUrl}&viewer_uuid=${userId}`;
+        // 星評価UIの初期化
+        updateStarUI(profile.lead_score || 0);
+
+        // アクティブなユーザー（ページを開いているユーザー）のみリンクを表示
+        const syncLink = document.getElementById('m-sync-link');
+        if (currentPage && path) {
+            const targetUrl = path === 'estimate.html' ? 'estimate.html' : `view_site.html?page=${currentPage}`;
+            syncLink.href = `${targetUrl}&viewer_uuid=${userId}`;
+            syncLink.style.display = 'block';
+        } else {
+            syncLink.style.display = 'none';
+        }
 
         const top3Html = history?.length 
             ? history.map((h, i) => `
@@ -290,11 +341,47 @@
         document.getElementById('userModal').style.display = 'block';
     };
 
+    // --- ★ 追加：星評価の更新処理 ---
+    window.updateLeadScore = async (score) => {
+        if (!currentModalUserId) return;
+        
+        // UIの見た目を即座に更新
+        updateStarUI(score);
+
+        // Supabaseに保存
+        const { error } = await supabase.from('profiles').update({ lead_score: score }).eq('id', currentModalUserId);
+        
+        if (!error) {
+            const msg = document.getElementById('rating-save-msg');
+            msg.style.display = 'inline';
+            setTimeout(() => { msg.style.display = 'none'; }, 2000); // 2秒後に消す
+            
+            // 画面を再描画してリストにも反映させる
+            await getProfile(currentModalUserId); // キャッシュ更新のため
+            renderPresence();
+            fetchRecentUsers();
+        }
+    };
+
+    // モーダル内の星の色を塗る関数
+    function updateStarUI(score) {
+        const stars = document.querySelectorAll('#star-container .star-btn');
+        stars.forEach((star, index) => {
+            if (index < score) {
+                star.classList.add('active');
+            } else {
+                star.classList.remove('active');
+            }
+        });
+    }
+
     window.closeModal = () => { document.getElementById('userModal').style.display = 'none'; };
 
-    // 5秒間隔で画面表示を更新
-    setInterval(renderPresence, 5000); 
+    // 初期化と定期更新
     initPresence();
+    fetchRecentUsers();
+    setInterval(renderPresence, 5000); 
+    setInterval(fetchRecentUsers, 30000); // 最近のユーザーリストは30秒ごとに更新
 </script>
 
 </body>
