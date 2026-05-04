@@ -37,7 +37,7 @@
         .modal-content { background: white; width: 550px; margin: 50px auto; padding: 30px; border-radius: 12px; position: relative; }
         .close-btn { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; }
         .history-box { background: #fff3cd; padding: 20px; border-radius: 8px; margin-top: 20px; border-left: 5px solid #ffc107; }
-        .sync-btn { display: block; text-align: center; background: var(--green); color: white; padding: 12px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 15px; }
+        .sync-btn { display: block; text-align: center; background: var(--green); color: white; padding: 12px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 15px; cursor: pointer; border: none; }
 
         .text-online { color: var(--green); }
         .text-away { color: var(--orange); }
@@ -47,25 +47,36 @@
         .predict-badge { font-size: 0.7em; background-color: var(--orange); color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: normal; }
         .text-unregistered { color: var(--gray); font-style: italic; }
 
-        /* --- 追加：星評価（ラベル）のスタイル --- */
         .stars-display { color: var(--star); font-size: 1.1em; letter-spacing: 2px; margin-left: 8px; text-shadow: 1px 1px 1px rgba(0,0,0,0.1); }
         .rating-editor { display: flex; align-items: center; gap: 10px; margin-top: 15px; margin-bottom: 15px; background: #f8f9fa; padding: 10px; border-radius: 8px; }
         .star-btn { font-size: 1.8em; color: #ddd; cursor: pointer; transition: 0.2s; user-select: none; }
         .star-btn:hover, .star-btn.active { color: var(--star); }
         
-        /* --- 追加：最近の動向（右側リスト）のスタイル --- */
         .recent-list { max-height: 700px; overflow-y: auto; padding-right: 10px; }
         .recent-item { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s; }
         .recent-item:hover { background: #f9f9f9; }
         .recent-item-info { flex-grow: 1; }
         .recent-item-date { font-size: 0.75em; color: var(--gray); white-space: nowrap; margin-left: 10px; }
+
+        /* --- 辞書管理モーダル用のスタイル --- */
+        .dict-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .dict-table th, .dict-table td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        .dict-table th { background: #f4f7f6; font-size: 0.9em; color: #555; }
+        .btn-small { padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: bold; }
+        .btn-delete { background: var(--hot); color: white; }
     </style>
 </head>
 <body>
 
 <div class="nav">
     <h2>Real-time Sales Intelligence</h2>
-    <div id="status">システム稼働中</div>
+    <div style="display: flex; align-items: center; gap: 20px;">
+        <!-- ★ 追加: 辞書管理を開くボタン -->
+        <button onclick="openDictModal()" style="background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+            📖 企業名辞書の管理
+        </button>
+        <div id="status">システム稼働中</div>
+    </div>
 </div>
 
 <div class="container">
@@ -89,12 +100,12 @@
     </div>
 </div>
 
+<!-- ユーザー詳細モーダル -->
 <div id="userModal" class="modal">
     <div class="modal-content">
-        <span class="close-btn" onclick="closeModal()">&times;</span>
+        <span class="close-btn" onclick="closeModal('userModal')">&times;</span>
         <h2 id="m-company" style="margin-bottom: 5px; display: inline-block;">会社名</h2>
         
-        <!-- ★ 追加：星評価を編集するUI -->
         <div class="rating-editor">
             <span style="font-size: 0.9em; font-weight: bold; color: #555;">見込み度:</span>
             <div id="star-container">
@@ -119,6 +130,41 @@
     </div>
 </div>
 
+<!-- ★ 追加: 辞書管理モーダル -->
+<div id="dictModal" class="modal">
+    <div class="modal-content" style="width: 650px;">
+        <span class="close-btn" onclick="closeModal('dictModal')">&times;</span>
+        <h2 style="margin-top: 0; color: var(--dark);">企業名予測辞書の管理</h2>
+        
+        <!-- 登録・更新フォーム -->
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <p style="font-size: 0.85em; color: #666; margin-top: 0;">新しいドメインを登録、または既存のドメインの企業名を上書き更新します。</p>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="dict-domain" placeholder="ドメイン (例: toyota.co.jp)" style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+                <input type="text" id="dict-company" placeholder="企業名 (例: トヨタ自動車株式会社)" style="flex: 1.5; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+                <button onclick="saveDictEntry()" class="sync-btn" style="margin-top: 0; padding: 10px 20px;">保存</button>
+            </div>
+            <p id="dict-msg" style="color: var(--green); font-size: 0.85em; font-weight: bold; margin-top: 10px; display: none;">✨ 保存しました！</p>
+        </div>
+
+        <!-- 辞書一覧テーブル -->
+        <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px;">
+            <table class="dict-table">
+                <thead>
+                    <tr>
+                        <th style="width: 35%;">ドメイン</th>
+                        <th style="width: 50%;">企業名</th>
+                        <th style="width: 15%; text-align: center;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="dict-list">
+                    <tr><td colspan="3" style="text-align: center; color: #999;">読み込み中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
@@ -131,9 +177,8 @@
     const pageStartTimeMap = new Map(); 
     let currentOnlineUsers = [];
     let isRendering = false;
-    let currentModalUserId = null; // 現在モーダルで開いているユーザーのID
+    let currentModalUserId = null;
 
-    // プロフィール取得（キャッシュ優先）
     async function getProfile(id) {
         if (profileCache.has(id)) return profileCache.get(id);
         const { data } = await supabase.from('profiles').select('*').eq('id', id).single();
@@ -144,7 +189,6 @@
         return null;
     }
 
-    // 5段階評価の星を描画する関数
     function renderStars(score) {
         const rating = parseInt(score) || 0;
         if (rating === 0) return '';
@@ -156,13 +200,9 @@
         channel.on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
             const users = Object.values(state).flat();
-            
             users.sort((a, b) => (Number(b.last_seen) || 0) - (Number(a.last_seen) || 0));
-            
             const uniqueMap = new Map();
-            for (const u of users) {
-                if (!uniqueMap.has(u.user_id)) uniqueMap.set(u.user_id, u);
-            }
+            for (const u of users) if (!uniqueMap.has(u.user_id)) uniqueMap.set(u.user_id, u);
             const uniqueUsers = Array.from(uniqueMap.values());
             
             uniqueUsers.sort((a, b) => {
@@ -246,37 +286,22 @@
                         <div class="page-circle">${isHot ? '📄' : pNum}</div>
                     </div>`;
             }
-
             document.getElementById('user-count').textContent = count;
             list.innerHTML = html || '<p style="color:#999">現在、閲覧中のユーザーはいません。</p>';
-
-        } catch (error) {
-            console.error("Render Error:", error);
-        } finally {
-            isRendering = false;
-        }
+        } catch (error) { console.error(error); } finally { isRendering = false; }
     }
 
-    // --- ★ 追加：右側の「これまでの閲覧ユーザー（最新20件）」を描画する処理 ---
     async function fetchRecentUsers() {
         try {
-            const { data: recentProfiles } = await supabase
-                .from('profiles')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(20);
-
+            const { data: recentProfiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(20);
             const listContainer = document.getElementById('history-summary');
             let html = '';
-
             if (recentProfiles && recentProfiles.length > 0) {
                 for (const profile of recentProfiles) {
                     const dateObj = new Date(profile.created_at);
                     const dateStr = `${dateObj.getMonth()+1}/${dateObj.getDate()} ${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
-                    
                     let companyDisplay = profile.company_name === '未登録' ? '<span class="text-unregistered">未登録</span>' : profile.company_name;
                     const starsHtml = `<span class="stars-display" style="font-size:0.9em;">${renderStars(profile.lead_score)}</span>`;
-
                     html += `
                         <div class="recent-item" onclick="showDetail('${profile.id}', null, null)">
                             <div class="recent-item-info">
@@ -284,104 +309,127 @@
                                 <span style="font-size: 0.85em; color: #555;">${profile.full_name === '未登録' ? profile.email : profile.full_name}</span>
                             </div>
                             <div class="recent-item-date">${dateStr}登録</div>
-                        </div>
-                    `;
+                        </div>`;
                 }
-            } else {
-                html = '<p style="color:#999; text-align:center;">履歴がありません</p>';
-            }
+            } else { html = '<p style="color:#999; text-align:center;">履歴がありません</p>'; }
             listContainer.innerHTML = html;
-        } catch (err) {
-            console.error("Recent users fetch error:", err);
-        }
+        } catch (err) { console.error(err); }
     }
 
-    // ユーザー詳細モーダル表示
     window.showDetail = async (userId, currentPage, path) => {
-        currentModalUserId = userId; // 現在のIDを保存（星評価の更新用）
+        currentModalUserId = userId;
         const profile = await getProfile(userId);
         if (!profile) return;
-
-        const { data: history } = await supabase
-            .from('top_3_stay_history')
-            .select('*')
-            .eq('user_id', userId)
-            .order('continuous_minutes', { ascending: false });
+        const { data: history } = await supabase.from('top_3_stay_history').select('*').eq('user_id', userId).order('continuous_minutes', { ascending: false });
 
         document.getElementById('m-company').textContent = profile.company_name;
-        
-        const dept = (profile.department && profile.department !== '未登録') ? profile.department : '部署未登録';
-        document.getElementById('m-department').textContent = dept;
-        
+        document.getElementById('m-department').textContent = (profile.department && profile.department !== '未登録') ? profile.department : '部署未登録';
         document.getElementById('m-user').textContent = profile.full_name;
         document.getElementById('m-contact').textContent = `${profile.email} / ${profile.phone}`;
         
-        // 星評価UIの初期化
         updateStarUI(profile.lead_score || 0);
 
-        // アクティブなユーザー（ページを開いているユーザー）のみリンクを表示
         const syncLink = document.getElementById('m-sync-link');
         if (currentPage && path) {
             const targetUrl = path === 'estimate.html' ? 'estimate.html' : `view_site.html?page=${currentPage}`;
             syncLink.href = `${targetUrl}&viewer_uuid=${userId}`;
             syncLink.style.display = 'block';
-        } else {
-            syncLink.style.display = 'none';
-        }
+        } else { syncLink.style.display = 'none'; }
 
-        const top3Html = history?.length 
-            ? history.map((h, i) => `
-                <div style="margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:5px;">
-                    <span style="font-weight:bold;">${i+1}. ${h.file_name} (${h.current_page}P)</span><br>
-                    連続滞在: <span style="color:var(--hot); font-weight:bold;">${h.continuous_minutes}分</span>
-                </div>`).join('')
-            : 'データがまだありません';
-
+        const top3Html = history?.length ? history.map((h, i) => `<div style="margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:5px;"><span style="font-weight:bold;">${i+1}. ${h.file_name} (${h.current_page}P)</span><br>連続滞在: <span style="color:var(--hot); font-weight:bold;">${h.continuous_minutes}分</span></div>`).join('') : 'データがまだありません';
         document.getElementById('m-top-3').innerHTML = top3Html;
         document.getElementById('userModal').style.display = 'block';
     };
 
-    // --- ★ 追加：星評価の更新処理 ---
     window.updateLeadScore = async (score) => {
         if (!currentModalUserId) return;
-        
-        // UIの見た目を即座に更新
         updateStarUI(score);
-
-        // Supabaseに保存
         const { error } = await supabase.from('profiles').update({ lead_score: score }).eq('id', currentModalUserId);
-        
         if (!error) {
             const msg = document.getElementById('rating-save-msg');
-            msg.style.display = 'inline';
-            setTimeout(() => { msg.style.display = 'none'; }, 2000); // 2秒後に消す
-            
-            // 画面を再描画してリストにも反映させる
-            await getProfile(currentModalUserId); // キャッシュ更新のため
-            renderPresence();
-            fetchRecentUsers();
+            msg.style.display = 'inline'; setTimeout(() => { msg.style.display = 'none'; }, 2000);
+            await getProfile(currentModalUserId);
+            renderPresence(); fetchRecentUsers();
         }
     };
 
-    // モーダル内の星の色を塗る関数
     function updateStarUI(score) {
-        const stars = document.querySelectorAll('#star-container .star-btn');
-        stars.forEach((star, index) => {
-            if (index < score) {
-                star.classList.add('active');
-            } else {
-                star.classList.remove('active');
-            }
+        document.querySelectorAll('#star-container .star-btn').forEach((star, index) => {
+            star.classList.toggle('active', index < score);
         });
     }
 
-    window.closeModal = () => { document.getElementById('userModal').style.display = 'none'; };
+    // --- ★ 追加: 辞書管理ロジック ---
+    window.openDictModal = async () => {
+        document.getElementById('dictModal').style.display = 'block';
+        await loadDictList();
+    };
+
+    window.closeModal = (modalId) => {
+        document.getElementById(modalId).style.display = 'none';
+    };
+
+    async function loadDictList() {
+        const tbody = document.getElementById('dict-list');
+        const { data, error } = await supabase.from('company_domains').select('*').order('domain');
+        
+        if (error || !data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 20px; color: #999;">登録されているドメインはありません。</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(d => `
+            <tr>
+                <td><b>${d.domain}</b></td>
+                <td>${d.company_name}</td>
+                <td style="text-align: center;">
+                    <button class="btn-small btn-delete" onclick="deleteDictEntry(${d.id}, '${d.domain}')">削除</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    window.saveDictEntry = async () => {
+        const domainInput = document.getElementById('dict-domain');
+        const companyInput = document.getElementById('dict-company');
+        const domain = domainInput.value.trim().toLowerCase();
+        const company = companyInput.value.trim();
+
+        if (!domain || !company) { alert('ドメインと企業名を入力してください。'); return; }
+        if (!domain.includes('.')) { alert('正しいドメイン形式を入力してください。(例: example.com)'); return; }
+
+        // upsert (onConflict) で、新規追加または既存の上書きを行う
+        const { error } = await supabase.from('company_domains').upsert({ domain: domain, company_name: company }, { onConflict: 'domain' });
+
+        if (error) {
+            alert('保存に失敗しました: ' + error.message);
+        } else {
+            const msg = document.getElementById('dict-msg');
+            msg.style.display = 'block';
+            setTimeout(() => { msg.style.display = 'none'; }, 3000);
+            
+            domainInput.value = '';
+            companyInput.value = '';
+            await loadDictList(); // リストを更新
+        }
+    };
+
+    window.deleteDictEntry = async (id, domain) => {
+        if (!confirm(`ドメイン「${domain}」を辞書から削除しますか？`)) return;
+        
+        const { error } = await supabase.from('company_domains').delete().eq('id', id);
+        if (error) {
+            alert('削除に失敗しました: ' + error.message);
+        } else {
+            await loadDictList();
+        }
+    };
 
     // 初期化と定期更新
     initPresence();
     fetchRecentUsers();
     setInterval(renderPresence, 5000); 
-    setInterval(fetchRecentUsers, 30000); // 最近のユーザーリストは30秒ごとに更新
+    setInterval(fetchRecentUsers, 30000);
 </script>
 
 </body>
