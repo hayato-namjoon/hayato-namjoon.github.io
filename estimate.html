@@ -151,16 +151,16 @@
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
         
         // 会社名が登録されていて、かつ「予測（仮）」でなければ、そのまま見積画面へ
-        if (profile && profile.company_name && profile.is_predicted_company === false) {
+        if (profile && profile.company_name && profile.company_name !== '未登録' && profile.is_predicted_company === false) {
             document.getElementById('customer-company').value = profile.company_name;
             return;
         }
 
-        // 会社名が未登録、または「予測（仮）」の場合はモーダルを表示
+        // 会社名が '未登録'、または「予測（仮）」の場合はモーダルを表示
         document.getElementById('step2-modal').style.display = 'flex';
 
-        // entry.htmlで予測された会社名がDBにあれば、初期値としてセットしておく
-        if (profile && profile.is_predicted_company && profile.company_name) {
+        // entry.htmlで予測された会社名がDBにあれば（未登録という文字以外なら）、初期値としてセットしておく
+        if (profile && profile.is_predicted_company && profile.company_name !== '未登録') {
             document.getElementById('step2_company').value = profile.company_name;
             document.getElementById('predict-notice').style.display = 'block'; 
             document.getElementById('predict-notice').textContent = "✨ メールアドレスから会社名を自動入力しました。正しければそのままお進みください。";
