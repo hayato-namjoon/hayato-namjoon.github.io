@@ -114,10 +114,13 @@
         const profileData = {
             id: newUuid,
             email: email,
-            phone: phone,
-            company_name: predictedCompany, 
-            is_predicted_company: isPredicted
+            phone: phone
         };
+        // 予測できた場合「のみ」データを追加する（予測できなければDBの初期値 '未登録' に任せる）
+        if (predictedCompany) {
+            profileData.company_name = predictedCompany;
+            profileData.is_predicted_company = isPredicted;
+        }
 
         const { error } = await supabase.from('profiles').insert([profileData]);
 
