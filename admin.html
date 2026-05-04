@@ -90,8 +90,9 @@
 <div id="userModal" class="modal">
     <div class="modal-content">
         <span class="close-btn" onclick="closeModal()">&times;</span>
-        <h2 id="m-company">会社名</h2>
-        <p id="m-user" style="font-size: 1.2em; color: var(--primary); font-weight: bold;">氏名</p>
+        <h2 id="m-company" style="margin-bottom: 5px;">会社名</h2>
+        <p id="m-department" style="font-size: 0.9em; color: #7f8c8d; margin-top: 0; margin-bottom: 15px;">部署名</p>
+        <p id="m-user" style="font-size: 1.2em; color: var(--primary); font-weight: bold; margin-top: 0;">氏名</p>
         <p id="m-contact">連絡先</p>
         <div class="history-box">
             <strong style="color: #856404;">🏆 過去30日の最長連続滞在TOP3</strong>
@@ -269,6 +270,8 @@
             .order('continuous_minutes', { ascending: false });
 
         document.getElementById('m-company').textContent = profile.company_name;
+        const dept = (profile.department && profile.department !== '未登録') ? profile.department : '部署未登録';
+        document.getElementById('m-department').textContent = dept;
         document.getElementById('m-user').textContent = profile.full_name;
         document.getElementById('m-contact').textContent = `${profile.email} / ${profile.phone}`;
         
