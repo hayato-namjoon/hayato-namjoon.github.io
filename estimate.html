@@ -30,9 +30,45 @@
         .totals { margin-top: 20px; text-align: right; font-size: 1.1em; background: #f9f9f9; padding: 20px; border-radius: 8px; }
         .totals b { font-size: 1.6em; color: var(--primary); }
         .status-msg { margin-top: 10px; text-align: center; font-weight: bold; }
+
+        /* --- モーダル用のスタイル --- */
+        #step2-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center; }
+        .step2-content { background: white; padding: 30px; border-radius: 10px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .step2-content h2 { margin-top: 0; font-size: 1.3rem; color: #2c3e50; }
+        .step2-content p { font-size: 0.9rem; color: #666; margin-bottom: 20px; }
+        .step2-field { margin-bottom: 15px; }
+        .step2-field label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #333; font-weight: bold; }
+        .step2-field input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 1rem; box-sizing: border-box; }
+        .step2-btn { width: 100%; padding: 12px; background: #3498db; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1rem; }
+        .step2-btn:hover { background: #2980b9; }
+        .predict-notice { font-size: 0.75rem; color: #2ecc71; margin-top: 5px; display: none; font-weight: bold; }
     </style>
 </head>
 <body>
+
+<!-- 二段階登録用モーダル -->
+<div id="step2-modal">
+    <div class="step2-content">
+        <h2>お見積りの作成へ進む</h2>
+        <p>見積書に記載するお客様情報を入力してください。</p>
+        <form id="step2-form" onsubmit="submitStep2(event)">
+            <div class="step2-field">
+                <label>会社名</label>
+                <input type="text" id="step2_company" required placeholder="株式会社〇〇">
+                <div id="predict-notice" class="predict-notice"></div>
+            </div>
+            <div class="step2-field">
+                <label>部署名</label>
+                <input type="text" id="step2_department" placeholder="営業部 (任意)">
+            </div>
+            <div class="step2-field">
+                <label>お名前</label>
+                <input type="text" id="step2_name" required placeholder="山田 太郎">
+            </div>
+            <button type="submit" id="step2-submit" class="step2-btn">見積もりを作成する</button>
+        </form>
+    </div>
+</div>
 
 <div class="estimate-container">
     <h1>
@@ -96,39 +132,99 @@
         { id: 'ecg', name: "Heart-View Pro (12誘導心電計)", code: "AM-ECG-12", price: 850000 }
     ];
 
-    // 日本語フォントBase64文字列（ツールで変換したものをここに貼り付け）
-    const JP_FONT_VFS = ""; 
-
-    // CookieからユーザーID取得
+    const JP_FONT_VFS = ""; // 日本語フォントBase64文字列
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
     async function init() {
         if (!viewerId) { window.location.href = 'entry.html'; return; }
+        
+        // 1. 未登録情報の入力チェックと予測の確定を行う
+        await checkAndPromptStep2();
+        
+        // 2. 問題なければ機能とトラッキングを開始
         startPresence();
-        addRow(); // 初期行
+        addRow(); 
     }
 
+    // --- 会社名確定 ＆ 二段階登録ロジック ---
+    async function checkAndPromptStep2() {
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', viewerId).single();
+        
+        // 会社名が登録されていて、かつ「予測（仮）」でなければ、そのまま見積画面へ
+        if (profile && profile.company_name && profile.is_predicted_company === false) {
+            document.getElementById('customer-company').value = profile.company_name;
+            return;
+        }
+
+        // 会社名が未登録、または「予測（仮）」の場合はモーダルを表示
+        document.getElementById('step2-modal').style.display = 'flex';
+
+        // entry.htmlで予測された会社名がDBにあれば、初期値としてセットしておく
+        if (profile && profile.is_predicted_company && profile.company_name) {
+            document.getElementById('step2_company').value = profile.company_name;
+            document.getElementById('predict-notice').style.display = 'block'; 
+            document.getElementById('predict-notice').textContent = "✨ メールアドレスから会社名を自動入力しました。正しければそのままお進みください。";
+        }
+    }
+
+    // モーダルからの送信処理（グローバル関数化）
+    window.submitStep2 = async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('step2-submit');
+        btn.disabled = true;
+        btn.textContent = "保存中...";
+
+        const company = document.getElementById('step2_company').value;
+        const updateData = {
+            company_name: company,
+            department: document.getElementById('step2_department').value,
+            full_name: document.getElementById('step2_name').value,
+            is_predicted_company: false // ユーザーが確定させたので予測フラグを解除
+        };
+
+        // 既存のレコードに情報を上書き(UPDATE)
+        const { error } = await supabase.from('profiles').update(updateData).eq('id', viewerId);
+
+        if (error) {
+            alert("エラーが発生しました: " + error.message);
+            btn.disabled = false;
+            btn.textContent = "見積もりを作成する";
+        } else {
+            document.getElementById('step2-modal').style.display = 'none';
+            document.getElementById('customer-company').value = company;
+
+            // --- 辞書の自動学習ロジック ---
+            const { data: profile } = await supabase.from('profiles').select('email').eq('id', viewerId).single();
+            if (profile && profile.email) {
+                const domain = profile.email.split('@')[1];
+                
+                // フリーメールかチェック
+                const { data: freeCheck } = await supabase.from('free_mail_domains').select('domain').eq('domain', domain).single();
+                
+                if (!freeCheck) {
+                    // 専用辞書に upsert (なければ追加、あれば更新) する
+                    await supabase.from('company_domains').upsert([
+                        { domain: domain, company_name: company }
+                    ], { onConflict: 'domain' });
+                }
+            }
+        }
+    };
+
     // --- リアルタイム追跡（管理画面への通知用） ---
-    // estimate.html 内の startPresence 関数
     function startPresence() {
         const channel = supabase.channel('online-users');
-        
         const track = () => {
             channel.track({ 
                 user_id: viewerId, 
                 current_path: 'estimate.html',
-                current_page: 0, // 見積ページは0として送る
+                current_page: 0, 
                 status: document.visibilityState === 'visible' ? 'online' : 'away',
                 last_seen: Date.now()
             });
         };
-    
         channel.subscribe(status => { if (status === 'SUBSCRIBED') track(); });
-    
-        // 30秒おきの定期送信
         setInterval(track, 30000);
-    
-        // ★追加：タブがアクティブになった瞬間に即座に再送する（復帰を管理画面に知らせる）
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') track();
         });
