@@ -55,33 +55,28 @@
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
     // ==========================================
-    // 1. 初期設定（※必ずご自身のURLとKEYに書き換えてください）
+    // 1. 初期設定
     // ==========================================
-    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; 
-    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; 
+    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co'; // ご自身のURLを入力
+    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6'; // ご自身のKEYを入力
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-    const PDF_URL = './catalog_2.pdf'; 
+    const PDF_URL = './catalog_1.pdf'; 
 
-    // ==========================================
-    // 2. 変数定義
-    // ==========================================
     let pdfDoc = null, pageNum = 1, isRendering = false, scale = 1.0, currentRenderTask = null;
     const canvas = document.getElementById('pdf-render');
     const ctx = canvas.getContext('2d');
     const container = document.getElementById('pdf-container');
     
-    // CookieからユーザーID取得
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
 
-    // Presence (リアルタイム通信) 用の変数
     let presenceChannel = null;
     let isPresenceReady = false;
-    let isSyncing = false;       // 通信ロック用フラグ
-    let lastTrackedPage = 0;     // 最後に送信「成功」したページ番号
-    let lastTrackedTime = 0;     // 最後に送信「成功」した時刻
+    
+    // ★追加：各タブの最終アクティブ時刻を記憶する変数
+    let currentLastSeen = Date.now(); 
 
     // ==========================================
-    // 3. メイン初期化処理
+    // 2. メイン初期化処理
     // ==========================================
     async function init() {
         if (!viewerId) { window.location.href = 'entry.html'; return; }
@@ -89,7 +84,6 @@
         const urlParams = new URLSearchParams(window.location.search);
         const targetPage = parseInt(urlParams.get('page'));
 
-        // 通信の監視ループを開始
         initPresence();
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -109,9 +103,23 @@
         }
     }
 
+
     // ==========================================
-    // 4. PDF 描画・操作ロジック（通信を含めない）
+    // 3. PDF 描画・操作ロジック
     // ==========================================
+    // ★追加：通信制御用の変数
+    let presenceTimeout = null;
+    let isTracking = false;
+    let pendingTrack = false;
+
+    // ★追加：連続送信を防ぎ、操作が落ち着いてから送信する（デバウンス処理）
+    function triggerPresenceUpdate() {
+        if (presenceTimeout) clearTimeout(presenceTimeout);
+        presenceTimeout = setTimeout(() => {
+            sendPresenceUpdate(true);
+        }, 500); // 0.5秒間操作がなかったら通信を実行
+    }
+
     async function getFitScale(num) {
         if (!container || !pdfDoc) return 1.0;
         const page = await pdfDoc.getPage(num);
@@ -127,12 +135,10 @@
         try {
             const page = await pdfDoc.getPage(num);
             const viewport = page.getViewport({ scale: scale });
-            
             canvas.height = viewport.height;
             canvas.width = viewport.width;
             canvas.style.width = viewport.width + "px";
             canvas.style.height = viewport.height + "px";
-            
             const renderContext = { canvasContext: ctx, viewport: viewport };
             currentRenderTask = page.render(renderContext);
             await currentRenderTask.promise;
@@ -148,7 +154,9 @@
     }
 
     async function updateWithReset() {
-        // ★ ページ番号を更新して描画するだけ（送信は監視ループに任せる）
+        // ★ 修正：描画を待たずに、ページ番号が変わった瞬間に送信の「予約」をする
+        triggerPresenceUpdate();
+
         scale = await getFitScale(pageNum);
         await renderPage(pageNum);
         if (container) container.scrollTo(0, 0);
@@ -172,7 +180,7 @@
     });
 
     // ==========================================
-    // 5. リアルタイム通信ロジック（監視・ステート同期方式）
+    // 4. Presence（リアルタイム通信）ロジック
     // ==========================================
     async function logToDB(p) {
         if (!viewerId) return;
@@ -183,73 +191,70 @@
         }]);
     }
 
-    // 毎秒実行され、送るべきデータがあるかチェックする関数
-    function checkAndSync() {
-        if (!isPresenceReady || !presenceChannel) return;
-
-        const now = Date.now();
-        const status = document.visibilityState === 'visible' ? 'online' : 'away';
-        
-        // 最後に送ったページと今のページが違う、または30秒以上送っていない場合は送信
-        const pageChanged = (lastTrackedPage !== pageNum); 
-        const timeToHeartbeat = (now - lastTrackedTime > 30000); 
-
-        if (pageChanged || timeToHeartbeat) {
-            executeTrack(status, pageChanged);
-        }
-    }
-
-    // 実際にSupabaseに送信する関数
-    async function executeTrack(status, isPageChanged) {
-        if (isSyncing) return; // 既に送信中なら今回は見送る（1秒後に再チェックされる）
-        isSyncing = true;
-
-        const trackingPage = pageNum; // 送信する時点のページ番号を記録
-
-        try {
-            await presenceChannel.track({ 
-                user_id: viewerId, 
-                current_page: Number(trackingPage), 
-                current_path: PDF_URL.split('/').pop(),
-                status: status,
-                last_seen: Date.now()
-            });
-
-            // ★ Supabaseに確実に届いた場合のみ記憶を更新する
-            lastTrackedPage = trackingPage;
-            lastTrackedTime = Date.now();
-
-            // オンラインでページが変わった時だけDBにも履歴を残す
-            if (status === 'online' && isPageChanged) {
-                logToDB(trackingPage);
-            }
-        } catch (error) {
-            console.error("Presence Track Error:", error);
-            // ★ エラーが起きると lastTrackedPage が更新されないため、
-            // 1秒後の checkAndSync が「まだ送れていない！」と判断し自動で再送します
-        } finally {
-            isSyncing = false;
-        }
-    }
-
     function initPresence() {
         presenceChannel = supabase.channel('online-users');
 
         presenceChannel.subscribe(status => {
             if (status === 'SUBSCRIBED') {
                 isPresenceReady = true;
-                executeTrack('online', true); // 接続完了時に初回送信
+                triggerPresenceUpdate(); // 接続完了時も予約経由で送信
             }
         });
 
-        // 1秒ごとに「更新すべきか」をチェックし続ける
-        setInterval(checkAndSync, 1000);
+        setInterval(() => sendPresenceUpdate(), 30000);
 
-        // タブ切り替え時にもチェックを走らせる
-        document.addEventListener('visibilitychange', checkAndSync);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                setTimeout(() => sendPresenceUpdate(true), 1000);
+            } else {
+                sendPresenceUpdate(); 
+            }
+        });
     }
 
-    // 起動
+    async function sendPresenceUpdate(forceUpdate = false) {
+        if (!isPresenceReady || !presenceChannel) return;
+
+        // ★ 通信中（ロック状態）なら、後でもう一度実行するようにフラグを立てて待機
+        if (isTracking) {
+            pendingTrack = true;
+            return;
+        }
+
+        const isVisible = document.visibilityState === 'visible';
+        const status = isVisible ? 'online' : 'away';
+
+        if (isVisible || forceUpdate) {
+            currentLastSeen = Date.now();
+        }
+
+        console.log(`🚀 送信準備: ページ=${pageNum}, タイムスタンプ=${currentLastSeen}`);
+        isTracking = true; // 送信ロック開始
+        try {
+            await presenceChannel.track({ 
+                user_id: viewerId, 
+                current_page: Number(pageNum), 
+                current_path: PDF_URL.split('/').pop(),
+                status: status,
+                last_seen: currentLastSeen
+            });
+
+            if (status === 'online' && forceUpdate) {
+                logToDB(pageNum);
+            }
+        } catch (error) {
+            console.error("Presence Track Error:", error);
+        } finally {
+            isTracking = false; // 送信ロック解除
+            
+            // ★ 保留されていた送信があれば、ロック解除後に再実行する
+            if (pendingTrack) {
+                pendingTrack = false;
+                sendPresenceUpdate(true);
+            }
+        }
+    }
+
     init();
 </script>
 </body>
