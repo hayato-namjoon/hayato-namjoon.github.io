@@ -85,14 +85,14 @@
         let predictedCompany = null;
         let isPredicted = false;
 
-        const domain = email.split('@')[1];
+        const domain = email.split('@')[1]?.toLowerCase();
         if (domain) {
             // 1. まず、入力されたドメインがフリーメールでないか確認
             const { data: freeDomainCheck } = await supabase
                 .from('free_mail_domains')
                 .select('domain')
                 .eq('domain', domain)
-                .single();
+                .maybeSingle();
 
             // 2. フリーメールでなければ、専用辞書(company_domains)を検索
             if (!freeDomainCheck) {
