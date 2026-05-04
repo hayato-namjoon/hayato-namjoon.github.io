@@ -42,6 +42,22 @@
         .text-away { color: var(--orange); }
         .text-offline { color: var(--gray); }
         .text-hot { color: var(--hot); font-weight: bold; }
+
+        /* --- 予測バッジと未登録テキストのスタイル --- */
+        .predict-badge {
+            font-size: 0.7em;
+            background-color: #f39c12; 
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+            font-weight: normal;
+        }
+        .text-unregistered {
+            color: #95a5a6;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -151,6 +167,8 @@
         const now = Date.now();
 
         try {
+            // ★キャッシュを無視して常に最新のプロフィールを取得する
+            profileCache.clear(); 
             await Promise.all(currentOnlineUsers.map(u => getProfile(u.user_id)));
 
             for (const u of currentOnlineUsers) {
@@ -159,13 +177,12 @@
                 if (!profile) continue;
                 if (filter && !profile.company_name.toLowerCase().includes(filter)) continue;
 
-                // 数値として確実に扱う
                 const pNum = parseInt(u.current_page) || 1;
                 const path = u.current_path || '';
                 const lastSeen = Number(u.last_seen) || now;
                 const diffSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
                 
-                // ★ 要件反映：120分（7200秒）以上経過したユーザーをリストから完全に消去
+                // 120分（7200秒）以上経過したユーザーをリストから完全に消去
                 if (diffSec > 7200) {
                     continue; 
                 }
@@ -176,7 +193,7 @@
                 let statusClass = "online";
                 let textClass = "";
 
-                // ★ 要件反映：3分（180秒）通信が途絶えたら「離脱の可能性」と表示
+                // 3分（180秒）通信が途絶えたら「離脱の可能性」と表示
                 if (diffSec > 180) {
                     statusLabel = "離脱の可能性";
                     statusClass = "offline";
@@ -195,24 +212,33 @@
                     textClass = "text-online";
                 }
 
-                // タイマー管理（ページやファイルが変わったらリセット）
+                // タイマー管理
                 const timerKey = u.user_id;
                 const timerData = pageStartTimeMap.get(timerKey);
                 if (!timerData || timerData.page !== pNum || timerData.path !== path) {
                     pageStartTimeMap.set(timerKey, { page: pNum, path: path, startTime: now });
                 }
                 const continuousMin = Math.floor((now - pageStartTimeMap.get(timerKey).startTime) / 60000);
-
-                // ★ 追加：ファイル名を分かりやすく表示するための変数
                 const fileNameDisplay = isHot ? '見積ページ' : path;
+
+                // ★ 会社名の表示分け（未登録・予測・確定）
+                let companyDisplayHtml = '';
+                if (profile.company_name === '未登録') {
+                    companyDisplayHtml = `<span class="text-unregistered">未登録 (入力待ち)</span>`;
+                } else {
+                    companyDisplayHtml = profile.company_name;
+                }
+
+                // ★ 予測フラグが立っていればバッジを表示
+                const predictBadgeHtml = profile.is_predicted_company ? `<span class="predict-badge">予測</span>` : '';
 
                 count++;
                 html += `
                     <div class="user-badge ${statusClass}" onclick="showDetail('${u.user_id}', ${pNum}, '${path}')">
                         ${(isHot && statusClass !== 'offline') ? '<div class="hot-label">HOT!!</div>' : ''}
                         <div class="info">
-                            <b>${profile.company_name}</b><br>
-                            <span>${profile.full_name}</span>
+                            <b>${companyDisplayHtml}</b>${predictBadgeHtml}<br>
+                            <span>${profile.full_name === '未登録' ? '' : profile.full_name}</span>
                             <span class="status-text ${textClass}">● ${statusLabel}</span>
                             <div class="timer">
                                 📄 <b style="color:var(--primary);">${fileNameDisplay}</b> ${isHot ? '' : `(${pNum}P)`} に ${continuousMin}分滞在 (更新:${diffSec}秒前)
