@@ -27,7 +27,6 @@
         ご入力後、すぐにカタログをご覧いただけます。
     </p>
     <form id="lead-form">
-        <!-- 会社名・部署名・氏名はここでは聞かない（Step 2に回す） -->
         <div class="field">
             <label>メールアドレス</label>
             <input type="email" id="email" required placeholder="example@mail.com">
@@ -44,8 +43,8 @@
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
     // ※必ずご自身のURLとKEYに書き換えてください
-    const SUPABASE_URL = 'https://jycqhswoacwoividgozx.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_i0inc7RvILsff03SagLiPA_OK_nuxX6';
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_KEY = 'YOUR_SUPABASE_KEY';
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
     const COOKIE_NAME = 'viewer_uuid';
@@ -79,12 +78,45 @@
         btn.textContent = "登録中...";
 
         const newUuid = crypto.randomUUID();
+        const email = document.getElementById('email').value;
+        const phone = document.getElementById('phone').value;
 
-        // 登録するデータはID, email, phoneのみ
+        // --- 会社名予測ロジック（専用辞書テーブルの参照） ---
+        let predictedCompany = null;
+        let isPredicted = false;
+
+        const domain = email.split('@')[1];
+        if (domain) {
+            // 1. まず、入力されたドメインがフリーメールでないか確認
+            const { data: freeDomainCheck } = await supabase
+                .from('free_mail_domains')
+                .select('domain')
+                .eq('domain', domain)
+                .single();
+
+            // 2. フリーメールでなければ、専用辞書(company_domains)を検索
+            if (!freeDomainCheck) {
+                const { data: dictMatch } = await supabase
+                    .from('company_domains')
+                    .select('company_name')
+                    .eq('domain', domain)
+                    .single();
+
+                // 辞書に登録されていれば、それを予測結果としてセット
+                if (dictMatch && dictMatch.company_name) {
+                    predictedCompany = dictMatch.company_name;
+                    isPredicted = true;
+                }
+            }
+        }
+
+        // DB（profiles）に登録するデータ
         const profileData = {
             id: newUuid,
-            email: document.getElementById('email').value,
-            phone: document.getElementById('phone').value
+            email: email,
+            phone: phone,
+            company_name: predictedCompany, 
+            is_predicted_company: isPredicted
         };
 
         const { error } = await supabase.from('profiles').insert([profileData]);
