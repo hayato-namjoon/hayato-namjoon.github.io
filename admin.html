@@ -673,14 +673,15 @@
                 const rows = text.split(/\r?\n/);
                 const dataToUpsert = [];
 
-                // 1行ずつ解析 (ヘッダー行 domain, company_name を想定)
-                rows.forEach((row, index) => {
-                    const columns = row.split(',');
+                // 1行ずつ解析
+                rows.forEach((row) => {
+                    const cleanRow = row.replace(/"/g, '');
+                    const columns = cleanRow.split(/,|\t/);
                     if (columns.length >= 2) {
                         const domain = columns[0].trim().toLowerCase();
                         const company = columns[1].trim();
 
-                        // ヘッダー文字列そのものや空行を除外
+                        // ヘッダー行や空行を除外
                         if (domain && company && domain !== 'domain' && !domain.startsWith('#')) {
                             dataToUpsert.push({ domain: domain, company_name: company });
                         }
