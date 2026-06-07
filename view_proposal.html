@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>システム企画書閲覧 - Sales Intelligence Portal</title>
+    <style>
+        :root {
+            --primary: #1e3799;
+            --dark: #2f3640;
+            --bg-color: #f5f7fa;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', 'Hiragino Sans', 'Meiryo', sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh; /* 画面の高さいっぱいに広げる */
+        }
+
+        .nav {
+            background: var(--dark);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .nav h2 {
+            margin: 0;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .back-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .back-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .pdf-container {
+            flex-grow: 1; /* 残りの高さをすべて埋める */
+            width: 100%;
+            background: #525659; /* PDFビューワーの標準的な背景色 */
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="nav">
+        <h2>📊 システム企画書（The Model型 リアルタイム追跡システム）</h2>
+        <a href="index.html" class="back-btn">← ポータルへ戻る</a>
+    </div>
+
+    <div class="pdf-container">
+        <!-- 同じフォルダにある proposal.pdf を表示します -->
+        <iframe src="proposal.pdf#toolbar=0" title="システム企画書">
+            お使いのブラウザはインラインでのPDF表示に対応していません。
+            <a href="proposal.pdf">こちらからPDFをダウンロードしてください。</a>
+        </iframe>
+    </div>
+
+</body>
+</html>
