@@ -2,29 +2,189 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>製品カタログ選択</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>製品カタログ選択 - Sales Intelligence</title>
     <style>
-        body { font-family: sans-serif; background: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; width: 350px; }
-        .btn { display: block; background: #3498db; color: white; padding: 15px; margin: 15px 0; text-decoration: none; border-radius: 8px; font-weight: bold; }
-        .btn-sub { background: #95a5a6; font-size: 0.9em; }
+        :root {
+            --primary: #1e3799;
+            --secondary: #4a69bd;
+            --accent: #e55039;
+            --dark: #2f3640;
+            --light: #f1f2f6;
+            --gray: #7f8fa6;
+            --white: #ffffff;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', 'Hiragino Sans', 'Meiryo', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background: var(--white);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid rgba(255,255,255,0.5);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 上部のアクセントライン */
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: var(--secondary);
+        }
+
+        .user-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+
+        h2 {
+            color: var(--primary);
+            margin: 0 0 5px 0;
+            font-size: 1.5em;
+        }
+
+        .subtitle {
+            color: var(--gray);
+            font-size: 0.9em;
+            margin-bottom: 30px;
+        }
+
+        /* メニューボタンのスタイル */
+        .menu-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: var(--white);
+            color: var(--dark);
+            padding: 18px;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 1.1em;
+            border: 2px solid #e1e5ee;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+
+        .btn-icon {
+            font-size: 1.2em;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            border-color: var(--secondary);
+            box-shadow: 0 8px 15px rgba(74, 105, 189, 0.1);
+            color: var(--primary);
+        }
+
+        .btn.estimate {
+            background: #fff5f5;
+            border-color: #fad3d3;
+            color: var(--accent);
+        }
+
+        .btn.estimate:hover {
+            border-color: var(--accent);
+            box-shadow: 0 8px 15px rgba(229, 80, 57, 0.15);
+        }
+
+        /* 戻るボタンのスタイル */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--gray);
+            text-decoration: none;
+            font-size: 0.9em;
+            font-weight: bold;
+            transition: color 0.2s;
+            padding: 10px;
+        }
+
+        .back-link:hover {
+            color: var(--dark);
+        }
     </style>
 </head>
 <body>
+
 <div class="card">
-    <h2 id="u-name">製品カタログ</h2>
-    <a href="view_site.html" class="btn">📄 製品カタログ 1</a>
-    <a href="view_site2.html" class="btn">📄 製品カタログ 2</a>
-    <a href="estimate.html" class="btn">📄 見積作成 </a>
+    <div class="user-icon">👤</div>
+    <h2 id="u-name">読み込み中...</h2>
+    <div class="subtitle">ご覧になりたいメニューを選択してください</div>
+    
+    <div class="menu-list">
+        <a href="view_site.html" class="btn">
+            <span class="btn-icon">📘</span>
+            <span>製品カタログ 1</span>
+        </a>
+        <a href="view_site2.html" class="btn">
+            <span class="btn-icon">📙</span>
+            <span>製品カタログ 2</span>
+        </a>
+        <a href="estimate.html" class="btn estimate">
+            <span class="btn-icon">💰</span>
+            <span>見積作成へ進む</span>
+        </a>
+    </div>
+
+    <!-- ポータルへ戻るリンク -->
+    <a href="index.html" class="back-link">
+        <span>🏠</span> ポータルトップへ戻る
+    </a>
 </div>
+
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
-    const supabase = createClient('URL', 'KEY');
+    
+    // ご自身のSupabaseのURLとKEYに変更してください
+    const supabaseUrl = 'URL';
+    const supabaseKey = 'KEY';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     const viewerId = document.cookie.match(/viewer_uuid=([^;]+)/)?.[1];
-    if (!viewerId) window.location.href = 'entry.html';
-    const { data } = await supabase.from('profiles').select('full_name').eq('id', viewerId).single();
-    if (!data) window.location.href = 'entry.html';
-    else document.getElementById('u-name').textContent = `${data.full_name} 様`;
+    
+    if (!viewerId) {
+        window.location.href = 'entry.html';
+    } else {
+        const { data } = await supabase.from('profiles').select('full_name').eq('id', viewerId).single();
+        if (!data) {
+            window.location.href = 'entry.html';
+        } else {
+            // 「未登録」の場合は「ゲスト 様」のように表示を調整する処理
+            const displayName = data.full_name === '未登録' ? 'ゲスト' : data.full_name;
+            document.getElementById('u-name').textContent = `${displayName} 様`;
+        }
+    }
 </script>
+
 </body>
 </html>
