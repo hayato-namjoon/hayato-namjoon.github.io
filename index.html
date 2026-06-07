@@ -3,29 +3,188 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>資料ポータル</title>
+    <title>Sales Intelligence Portal</title>
     <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f4f7f6; }
-        .menu-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 600px; }
-        .card { background: white; padding: 40px; border-radius: 12px; text-decoration: none; color: #333; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.2s; }
-        .card:hover { transform: translateY(-5px); }
-        .card h2 { color: #3498db; margin-top: 0; }
-        .card p { font-size: 0.9em; color: #666; }
+        :root {
+            --primary: #1e3799;
+            --secondary: #4a69bd;
+            --accent: #e55039;
+            --success: #05c46b;
+            --dark: #2f3640;
+            --light: #f1f2f6;
+            --white: #ffffff;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', 'Hiragino Sans', 'Meiryo', sans-serif;
+            /* モダンで清潔感のある背景グラデーション */
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .header h1 {
+            color: var(--primary);
+            font-size: 2.5em;
+            margin: 0 0 10px 0;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header p {
+            color: var(--dark);
+            font-size: 1.1em;
+            margin: 0;
+            font-weight: bold;
+            opacity: 0.8;
+        }
+
+        .menu-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .card {
+            background: var(--white);
+            padding: 40px 30px;
+            border-radius: 16px;
+            text-decoration: none;
+            color: var(--dark);
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+
+        /* カード上部のカラフルなライン */
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            transition: height 0.3s ease;
+        }
+
+        .card.customer::before { background: var(--secondary); }
+        .card.admin::before { background: var(--accent); }
+        .card.manager::before { background: var(--success); }
+        .card.proposal::before { background: #f39c12; }
+
+        /* ホバー時の浮き上がりアニメーション */
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+
+        .card:hover::before {
+            height: 10px;
+        }
+
+        .icon {
+            font-size: 3.5em;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .card h2 {
+            color: var(--dark);
+            margin: 0 0 15px 0;
+            font-size: 1.4em;
+        }
+
+        .card p {
+            font-size: 0.95em;
+            color: #666;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        /* 右上のラベルバッジ */
+        .badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 0.75em;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            color: white;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .badge-customer { background: var(--secondary); }
+        .badge-internal { background: var(--accent); }
+        .badge-info { background: #f39c12; }
+
+        /* スマホ閲覧時の1列表示設定 */
+        @media (max-width: 768px) {
+            .menu-container {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
 
-<div class="menu-container">
-    <a href="entry.html" class="card">
-        <h2>資料を閲覧する</h2>
-        <p>最新の製品カタログ・価格表はこちらからご覧いただけます。</p>
-    </a>
+    <div class="header">
+        <h1>Sales Intelligence Portal</h1>
+        <p>リアルタイム・セールスシグナル追跡システム</p>
+    </div>
 
-    <a href="admin.html" class="card">
-        <h2>管理者パネル</h2>
-        <p>リアルタイムの閲覧状況と顧客分析を確認します。</p>
-    </a>
-</div>
+    <div class="menu-container">
+        
+        <!-- 顧客向け入り口 -->
+        <a href="entry.html" class="card customer">
+            <span class="badge badge-customer">顧客向け</span>
+            <span class="icon">📘</span>
+            <h2>資料閲覧ポータル</h2>
+            <p>最新の製品カタログ・価格表等の閲覧ページ。ドメイン予測による自動入力補完機能や、マジックリンクによる入室に対応。</p>
+        </a>
+
+        <!-- 営業向けダッシュボード -->
+        <a href="admin.html" class="card admin">
+            <span class="badge badge-internal">社内・営業用</span>
+            <span class="icon">🚨</span>
+            <h2>セールス・ダッシュボード</h2>
+            <p>顧客の閲覧状況を1秒単位でリアルタイムに追跡。滞在時間の確認、見込み度のスコアリング、辞書の管理を行う。</p>
+        </a>
+
+        <!-- ユーザー登録・QRコード発行 -->
+        <a href="user_manager.html" class="card manager">
+            <span class="badge badge-internal">社内・営業用</span>
+            <span class="icon">👥</span>
+            <h2>ユーザー登録・QR発行</h2>
+            <p>獲得したリード情報を事前登録し、フォーム入力不要の「マジックリンク」や「専用QRコード」を瞬時に発行する。</p>
+        </a>
+
+        <!-- システム企画書 -->
+        <a href="proposal.html" class="card proposal">
+            <span class="badge badge-info">資料・マニュアル</span>
+            <span class="icon">📊</span>
+            <h2>システム企画書</h2>
+            <p>本システムの目的、解決する課題、全体構成、および導入効果（ROI）をまとめたA4版の提案資料。</p>
+        </a>
+
+    </div>
 
 </body>
 </html>
