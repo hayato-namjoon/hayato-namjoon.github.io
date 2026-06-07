@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="ja">
-
 <head>
     <meta charset="UTF-8">
     <title>営業分析ダッシュボード</title>
@@ -155,6 +154,7 @@
             z-index: 1000;
         }
 
+        /* ★変更: コンテンツが画面外にはみ出ないように max-height と overflow-y を追加 */
         .modal-content {
             background: white;
             width: 550px;
@@ -162,6 +162,8 @@
             padding: 30px;
             border-radius: 12px;
             position: relative;
+            max-height: 85vh;
+            overflow-y: auto; 
         }
 
         .close-btn {
@@ -170,6 +172,7 @@
             right: 20px;
             font-size: 24px;
             cursor: pointer;
+            z-index: 10;
         }
 
         .history-box {
@@ -194,22 +197,10 @@
             border: none;
         }
 
-        .text-online {
-            color: var(--green);
-        }
-
-        .text-away {
-            color: var(--orange);
-        }
-
-        .text-offline {
-            color: var(--gray);
-        }
-
-        .text-hot {
-            color: var(--hot);
-            font-weight: bold;
-        }
+        .text-online { color: var(--green); }
+        .text-away { color: var(--orange); }
+        .text-offline { color: var(--gray); }
+        .text-hot { color: var(--hot); font-weight: bold; }
 
         .predict-badge {
             font-size: 0.7em;
@@ -323,6 +314,11 @@
             background: var(--hot);
             color: white;
         }
+
+        /* --- ★追加: ユーザー編集用フォームのスタイル --- */
+        .edit-field { margin-bottom: 10px; }
+        .edit-field label { display: block; font-size: 0.8em; color: #666; margin-bottom: 3px; font-weight: bold; }
+        .edit-field input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 1em; }
     </style>
 </head>
 
@@ -331,7 +327,6 @@
     <div class="nav">
         <h2>Real-time Sales Intelligence</h2>
         <div style="display: flex; align-items: center; gap: 20px;">
-            <!-- ★ 追加: 辞書管理を開くボタン -->
             <button onclick="openDictModal()"
                 style="background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">
                 📖 企業名辞書の管理
@@ -361,28 +356,46 @@
         </div>
     </div>
 
-    <!-- ユーザー詳細モーダル -->
     <div id="userModal" class="modal">
         <div class="modal-content">
             <span class="close-btn" onclick="closeModal('userModal')">&times;</span>
-            <h2 id="m-company" style="margin-bottom: 5px; display: inline-block;">会社名</h2>
-
-            <div class="rating-editor">
-                <span style="font-size: 0.9em; font-weight: bold; color: #555;">見込み度:</span>
-                <div id="star-container">
-                    <span class="star-btn" onclick="updateLeadScore(1)">★</span>
-                    <span class="star-btn" onclick="updateLeadScore(2)">★</span>
-                    <span class="star-btn" onclick="updateLeadScore(3)">★</span>
-                    <span class="star-btn" onclick="updateLeadScore(4)">★</span>
-                    <span class="star-btn" onclick="updateLeadScore(5)">★</span>
-                </div>
-                <span id="rating-save-msg"
-                    style="font-size: 0.8em; color: var(--green); margin-left: 10px; display: none;">保存しました</span>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-right: 20px;">
+                <h2 id="m-company" style="margin: 0; color: var(--dark);">会社名</h2>
+                <button id="btn-edit-profile" onclick="toggleUserEdit(true)" style="background: #ecf0f1; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: bold; color: #333;">✏️ 編集</button>
             </div>
 
-            <p id="m-department" style="font-size: 0.9em; color: #7f8c8d; margin-top: 0; margin-bottom: 15px;">部署名</p>
-            <p id="m-user" style="font-size: 1.2em; color: var(--primary); font-weight: bold; margin-top: 0;">氏名</p>
-            <p id="m-contact">連絡先</p>
+            <div id="m-display-mode">
+                <div class="rating-editor">
+                    <span style="font-size: 0.9em; font-weight: bold; color: #555;">見込み度:</span>
+                    <div id="star-container">
+                        <span class="star-btn" onclick="updateLeadScore(1)">★</span>
+                        <span class="star-btn" onclick="updateLeadScore(2)">★</span>
+                        <span class="star-btn" onclick="updateLeadScore(3)">★</span>
+                        <span class="star-btn" onclick="updateLeadScore(4)">★</span>
+                        <span class="star-btn" onclick="updateLeadScore(5)">★</span>
+                    </div>
+                    <span id="rating-save-msg"
+                        style="font-size: 0.8em; color: var(--green); margin-left: 10px; display: none;">保存しました</span>
+                </div>
+
+                <p id="m-department" style="font-size: 0.9em; color: #7f8c8d; margin-top: 0; margin-bottom: 15px;">部署名</p>
+                <p id="m-user" style="font-size: 1.2em; color: var(--primary); font-weight: bold; margin-top: 0;">氏名</p>
+                <p id="m-contact" style="color: #555;">連絡先</p>
+            </div>
+
+            <div id="m-edit-mode" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 15px;">
+                <div class="edit-field"><label>会社名</label><input type="text" id="edit-company"></div>
+                <div class="edit-field"><label>部署名</label><input type="text" id="edit-department"></div>
+                <div class="edit-field"><label>氏名</label><input type="text" id="edit-user"></div>
+                <div class="edit-field"><label>メールアドレス (必須)</label><input type="email" id="edit-email"></div>
+                <div class="edit-field"><label>電話番号</label><input type="tel" id="edit-phone"></div>
+                
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                    <button onclick="toggleUserEdit(false)" style="padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; background: #ccc; font-weight: bold;">キャンセル</button>
+                    <button onclick="saveUserProfile()" style="padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; background: var(--primary); color: white; font-weight: bold;">保存して反映</button>
+                </div>
+            </div>
 
             <div class="history-box">
                 <strong style="color: #856404;">🏆 過去30日の最長連続滞在TOP3</strong>
@@ -392,13 +405,11 @@
         </div>
     </div>
 
-    <!-- ★ 追加: 辞書管理モーダル -->
     <div id="dictModal" class="modal">
-        <div class="modal-content" style="width: 650px;">
+        <div class="modal-content" style="width: 700px;">
             <span class="close-btn" onclick="closeModal('dictModal')">&times;</span>
             <h2 style="margin-top: 0; color: var(--dark);">企業名予測辞書の管理</h2>
 
-            <!-- 登録・更新フォーム -->
             <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <h4 style="margin: 0;">新規追加・更新</h4>
@@ -429,7 +440,6 @@
                 </p>
             </div>
 
-            <!-- 辞書一覧テーブル -->
             <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px;">
                 <table class="dict-table">
                     <thead>
@@ -602,10 +612,13 @@
 
         window.showDetail = async (userId, currentPage, path) => {
             currentModalUserId = userId;
+            toggleUserEdit(false); // モーダルを開くたびに表示モードにリセット
+
             const profile = await getProfile(userId);
             if (!profile) return;
             const { data: history } = await supabase.from('top_3_stay_history').select('*').eq('user_id', userId).order('continuous_minutes', { ascending: false });
 
+            // 表示用データのセット
             document.getElementById('m-company').textContent = profile.company_name;
             document.getElementById('m-department').textContent = (profile.department && profile.department !== '未登録') ? profile.department : '部署未登録';
             document.getElementById('m-user').textContent = profile.full_name;
@@ -625,6 +638,80 @@
             document.getElementById('userModal').style.display = 'block';
         };
 
+        // ==========================================
+        // ★追加: ユーザー情報 編集ロジック
+        // ==========================================
+        window.toggleUserEdit = (show) => {
+            const displayMode = document.getElementById('m-display-mode');
+            const editMode = document.getElementById('m-edit-mode');
+            const btnEdit = document.getElementById('btn-edit-profile');
+
+            if (show) {
+                // 編集モードに切り替え
+                displayMode.style.display = 'none';
+                btnEdit.style.display = 'none';
+                editMode.style.display = 'block';
+
+                // 入力欄に現在のデータをセット
+                const profile = profileCache.get(currentModalUserId);
+                document.getElementById('edit-company').value = profile.company_name !== '未登録' ? profile.company_name : '';
+                document.getElementById('edit-department').value = profile.department !== '未登録' ? profile.department : '';
+                document.getElementById('edit-user').value = profile.full_name !== '未登録' ? profile.full_name : '';
+                document.getElementById('edit-email').value = profile.email || '';
+                document.getElementById('edit-phone').value = profile.phone !== '未登録' ? profile.phone : '';
+            } else {
+                // 表示モードに戻す
+                displayMode.style.display = 'block';
+                btnEdit.style.display = 'block';
+                editMode.style.display = 'none';
+            }
+        };
+
+        window.saveUserProfile = async () => {
+            const company = document.getElementById('edit-company').value.trim() || '未登録';
+            const department = document.getElementById('edit-department').value.trim() || '未登録';
+            const fullName = document.getElementById('edit-user').value.trim() || '未登録';
+            const email = document.getElementById('edit-email').value.trim();
+            const phone = document.getElementById('edit-phone').value.trim() || '未登録';
+
+            if (!email) {
+                alert("メールアドレスは必須項目です。");
+                return;
+            }
+
+            const updateData = {
+                company_name: company,
+                department: department,
+                full_name: fullName,
+                email: email,
+                phone: phone,
+                is_predicted_company: false // 管理者が手動で更新したため予測フラグは消す
+            };
+
+            const { error } = await supabase.from('profiles').update(updateData).eq('id', currentModalUserId);
+
+            if (error) {
+                alert("更新に失敗しました: " + error.message);
+            } else {
+                // キャッシュを強制更新
+                profileCache.delete(currentModalUserId);
+                await getProfile(currentModalUserId);
+                
+                // モーダルのテキストを更新
+                document.getElementById('m-company').textContent = company;
+                document.getElementById('m-department').textContent = department !== '未登録' ? department : '部署未登録';
+                document.getElementById('m-user').textContent = fullName;
+                document.getElementById('m-contact').textContent = `${email} / ${phone}`;
+                
+                toggleUserEdit(false); // 表示モードに戻す
+                
+                // 背景のリストも最新状態に再描画する
+                renderPresence();
+                fetchRecentUsers();
+            }
+        };
+        // ==========================================
+
         window.updateLeadScore = async (score) => {
             if (!currentModalUserId) return;
             updateStarUI(score);
@@ -643,7 +730,7 @@
             });
         }
 
-        // --- ★ 追加: 辞書管理ロジック ---
+        // --- 辞書管理ロジック ---
         window.openDictModal = async () => {
             document.getElementById('dictModal').style.display = 'block';
             await loadDictList();
@@ -675,6 +762,7 @@
 
                 // 1行ずつ解析
                 rows.forEach((row) => {
+                    // Excel特有の「" (ダブルクォーテーション)」をすべて取り除く
                     const cleanRow = row.replace(/"/g, '');
                     const columns = cleanRow.split(/,|\t/);
                     if (columns.length >= 2) {
@@ -689,7 +777,7 @@
                 });
 
                 if (dataToUpsert.length === 0) {
-                    alert("有効なデータが見つかりませんでした。CSV形式を確認してください。");
+                    alert("有効なデータが見つかりませんでした。ファイルの中身を確認してください。");
                     return;
                 }
 
@@ -710,13 +798,13 @@
                     showDictMsg(`✨ ${dataToUpsert.length}件のインポートが完了しました。`);
                     fileInput.value = "";
                     btn.style.display = 'none';
-                    await loadDictList();
+                    await loadDictList(); // 画面のリストを最新に更新
                 }
                 btn.disabled = false;
             };
             reader.readAsText(file);
         };
-        // メッセージ表示用
+
         function showDictMsg(text) {
             const msg = document.getElementById('dict-msg');
             msg.textContent = text;
@@ -759,10 +847,7 @@
             if (error) {
                 alert('保存に失敗しました: ' + error.message);
             } else {
-                const msg = document.getElementById('dict-msg');
-                msg.style.display = 'block';
-                setTimeout(() => { msg.style.display = 'none'; }, 3000);
-
+                showDictMsg(`✨ 保存しました！`);
                 domainInput.value = '';
                 companyInput.value = '';
                 await loadDictList(); // リストを更新
