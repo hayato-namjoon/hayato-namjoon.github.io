@@ -17,7 +17,6 @@
 
         body {
             font-family: 'Helvetica Neue', 'Hiragino Sans', 'Meiryo', sans-serif;
-            /* モダンで清潔感のある背景グラデーション */
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             min-height: 100vh;
             margin: 0;
@@ -29,26 +28,9 @@
             box-sizing: border-box;
         }
 
-        .header {
-            text-align: center;
-            margin-bottom: 50px;
-        }
-
-        .header h1 {
-            color: var(--primary);
-            font-size: 2.5em;
-            margin: 0 0 10px 0;
-            letter-spacing: 1px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .header p {
-            color: var(--dark);
-            font-size: 1.1em;
-            margin: 0;
-            font-weight: bold;
-            opacity: 0.8;
-        }
+        .header { text-align: center; margin-bottom: 50px; }
+        .header h1 { color: var(--primary); font-size: 2.5em; margin: 0 0 10px 0; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header p { color: var(--dark); font-size: 1.1em; margin: 0; font-weight: bold; opacity: 0.8; }
 
         .menu-container {
             display: grid;
@@ -72,74 +54,30 @@
             border: 1px solid rgba(255,255,255,0.5);
         }
 
-        /* カード上部のカラフルなライン */
-        .card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 6px;
-            transition: height 0.3s ease;
-        }
-
+        .card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 6px; transition: height 0.3s ease; }
         .card.customer::before { background: var(--secondary); }
         .card.admin::before { background: var(--accent); }
         .card.manager::before { background: var(--success); }
         .card.proposal::before { background: #f39c12; }
 
-        /* ホバー時の浮き上がりアニメーション */
-        .card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
-        }
+        .card:hover { transform: translateY(-8px); box-shadow: 0 15px 40px rgba(0,0,0,0.15); }
+        .card:hover::before { height: 10px; }
 
-        .card:hover::before {
-            height: 10px;
-        }
+        .icon { font-size: 3.5em; margin-bottom: 20px; display: block; }
+        .card h2 { color: var(--dark); margin: 0 0 15px 0; font-size: 1.4em; }
+        .card p { font-size: 0.95em; color: #666; line-height: 1.6; margin: 0; }
 
-        .icon {
-            font-size: 3.5em;
-            margin-bottom: 20px;
-            display: block;
-        }
-
-        .card h2 {
-            color: var(--dark);
-            margin: 0 0 15px 0;
-            font-size: 1.4em;
-        }
-
-        .card p {
-            font-size: 0.95em;
-            color: #666;
-            line-height: 1.6;
-            margin: 0;
-        }
-
-        /* 右上のラベルバッジ */
         .badge {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            font-size: 0.75em;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-weight: bold;
-            color: white;
-            letter-spacing: 0.5px;
+            position: absolute; top: 20px; right: 20px; font-size: 0.75em; padding: 5px 12px;
+            border-radius: 20px; font-weight: bold; color: white; letter-spacing: 0.5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-
         .badge-customer { background: var(--secondary); }
         .badge-internal { background: var(--accent); }
         .badge-info { background: #f39c12; }
 
-        /* スマホ閲覧時の1列表示設定 */
         @media (max-width: 768px) {
-            .menu-container {
-                grid-template-columns: 1fr;
-            }
+            .menu-container { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -151,7 +89,6 @@
     </div>
 
     <div class="menu-container">
-        
         <!-- 顧客向け入り口 -->
         <a href="entry.html" class="card customer">
             <span class="badge badge-customer">顧客向け</span>
@@ -176,14 +113,13 @@
             <p>獲得したリード情報を事前登録し、フォーム入力不要の「マジックリンク」や「専用QRコード」を瞬時に発行する。</p>
         </a>
 
-        <!-- システム企画書 -->
-        <a href="proposal.html" class="card proposal">
+        <!-- ★変更箇所：システム企画書 (PDF閲覧ページへのリンク) -->
+        <a href="view_proposal.html" class="card proposal">
             <span class="badge badge-info">資料・マニュアル</span>
             <span class="icon">📊</span>
             <h2>システム企画書</h2>
-            <p>本システムの目的、解決する課題、全体構成、および導入効果（ROI）をまとめたA4版の提案資料。</p>
+            <p>本システムの目的、解決する課題、全体構成、および導入効果（ROI）をまとめたA4版の提案資料（PDF形式）。</p>
         </a>
-
     </div>
 
 </body>
