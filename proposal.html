@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【提案書】The Model型 リアルタイム・セールスシグナル追跡システム</title>
+    <style>
+        :root {
+            --primary: #1e3799;
+            --secondary: #4a69bd;
+            --accent: #e55039;
+            --light: #f8f9fa;
+            --dark: #2f3640;
+            --gray: #7f8fa6;
+            --success: #05c46b;
+            --bg-color: #dcdde1;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', 'Hiragino Sans', 'Meiryo', sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            font-size: 15px;
+            /* 縦向きに合わせて少し調整 */
+        }
+
+        /* A4縦向き（ポートレート）の1ページ（スライド）の枠組み */
+        .page-slide {
+            width: 180mm;
+            /* A4縦(210mm) - 左右余白(15mm×2) */
+            height: 267mm;
+            /* A4縦(297mm) - 上下余白(15mm×2) */
+            margin: 0 auto 30px auto;
+            background: #fff;
+            padding: 15mm;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            page-break-after: always;
+            overflow: hidden;
+        }
+
+        /* --- タイトルページ用 --- */
+        .title-page {
+            justify-content: center;
+            text-align: center;
+            background: linear-gradient(135deg, #ffffff 0%, #f1f2f6 100%);
+        }
+
+        h1 {
+            color: var(--primary);
+            font-size: 2.8em;
+            line-height: 1.3;
+            margin-bottom: 20px;
+            border-bottom: 4px solid var(--primary);
+            padding-bottom: 30px;
+        }
+
+        .subtitle {
+            font-size: 1.3em;
+            color: var(--gray);
+            font-weight: bold;
+            margin-bottom: 60px;
+        }
+
+        .exec-summary {
+            background: #fff;
+            padding: 25px 30px;
+            border-radius: 10px;
+            border-left: 8px solid var(--accent);
+            text-align: left;
+            font-size: 1.1em;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        /* --- 各ページの見出し --- */
+        h2 {
+            color: var(--primary);
+            font-size: 1.6em;
+            border-left: 8px solid var(--secondary);
+            padding-left: 15px;
+            margin-top: 0;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+
+        p {
+            font-size: 1.05em;
+            margin-bottom: 20px;
+        }
+
+        /* --- 課題（3つのカード） --- */
+        .issue-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            flex-grow: 1;
+        }
+
+        .issue-card {
+            background: #fff5f5;
+            border: 2px solid #fad3d3;
+            border-left: 8px solid var(--accent);
+            border-radius: 10px;
+            padding: 25px;
+            display: flex;
+            align-items: center;
+            gap: 25px;
+        }
+
+        .issue-icon {
+            font-size: 3.5em;
+            line-height: 1;
+        }
+
+        .issue-content h3 {
+            margin: 0 0 8px 0;
+            color: var(--accent);
+            font-size: 1.3em;
+        }
+
+        .issue-content p {
+            margin: 0;
+            font-size: 1.05em;
+            color: #555;
+        }
+
+        /* --- システム全体図（縦向きレイアウト） --- */
+        .system-diagram {
+            display: flex;
+            flex-direction: column;
+            /* 縦並びに変更 */
+            align-items: center;
+            background: var(--light);
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #dcdde1;
+            margin-top: 10px;
+            flex-grow: 1;
+            justify-content: center;
+        }
+
+        .diagram-node {
+            width: 80%;
+            /* 横幅を調整 */
+            text-align: center;
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.05);
+            border-left: 8px solid var(--secondary);
+            /* 縦レイアウトなので左線に変更 */
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            text-align: left;
+        }
+
+        .diagram-node.accent {
+            border-left-color: var(--accent);
+            box-shadow: 0 8px 20px rgba(229, 80, 57, 0.2);
+            transform: scale(1.02);
+        }
+
+        .node-icon {
+            font-size: 3.5em;
+            flex-shrink: 0;
+        }
+
+        .node-text {
+            flex-grow: 1;
+        }
+
+        .node-title {
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 5px;
+            color: var(--primary);
+        }
+
+        .node-desc {
+            font-size: 1em;
+            color: var(--gray);
+            line-height: 1.5;
+        }
+
+        .diagram-arrow {
+            font-size: 2.5em;
+            color: var(--gray);
+            padding: 10px 0;
+            transform: rotate(90deg);
+            /* 矢印を下に向けます */
+        }
+
+        /* --- Before/After比較（縦向きレイアウト） --- */
+        .comparison-container {
+            display: flex;
+            flex-direction: column;
+            /* 縦並びに変更 */
+            gap: 25px;
+            margin-top: 10px;
+            flex-grow: 1;
+        }
+
+        .comp-box {
+            flex: 1;
+            padding: 20px 25px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .comp-before {
+            background: #fdf2f2;
+            border: 2px solid #fad3d3;
+        }
+
+        .comp-after {
+            background: #f0fbf4;
+            border: 2px solid #cce8d5;
+        }
+
+        .comp-title {
+            font-weight: bold;
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 3px dashed #ccc;
+        }
+
+        .comp-before .comp-title {
+            color: #c0392b;
+        }
+
+        .comp-after .comp-title {
+            color: #27ae60;
+        }
+
+        .step-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .step-list li {
+            position: relative;
+            padding: 10px 10px 10px 35px;
+            background: #fff;
+            border-radius: 8px;
+            font-size: 1.05em;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+            font-weight: bold;
+            color: #444;
+            margin-bottom: 8px;
+        }
+
+        .step-list li::before {
+            content: "↓";
+            position: absolute;
+            left: 15px;
+            top: 10px;
+            color: #bdc3c7;
+            font-size: 1.1em;
+        }
+
+        .comp-before .bad-point {
+            color: #c0392b;
+        }
+
+        .comp-after .good-point {
+            color: var(--success);
+        }
+
+        /* --- コア機能カード（2x2グリッド） --- */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 10px;
+            flex-grow: 1;
+        }
+
+        .feature-card {
+            background: #fff;
+            border: 2px solid #eee;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border-top: 8px solid var(--primary);
+        }
+
+        .feature-card h4 {
+            margin-top: 0;
+            font-size: 1.2em;
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+
+        .feature-card p {
+            font-size: 1em;
+            color: #555;
+            margin-bottom: 0;
+        }
+
+        /* --- 導入効果リスト --- */
+        .roi-list {
+            list-style: none;
+            padding: 0;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .roi-list li {
+            background: #fff;
+            border-left: 8px solid var(--success);
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            flex: 1;
+        }
+
+        .roi-title {
+            font-size: 1.3em;
+            color: var(--dark);
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .roi-desc {
+            font-size: 1.05em;
+            color: #555;
+            margin: 0;
+        }
+
+        /* A4縦 印刷設定 */
+        @page {
+            size: A4 portrait;
+            margin: 15mm;
+            /* 印刷時の余白を設定 */
+        }
+
+        @media print {
+            body {
+                background: #fff;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .page-slide {
+                box-shadow: none;
+                margin: 0;
+                border-radius: 0;
+                width: 100%;
+                height: 100%;
+                padding: 0;
+                /* @pageで余白を取るため0に */
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 1ページ目：タイトルと概要 -->
+    <div class="page-slide title-page">
+        <h1>リアルタイム<br>セールスシグナル<br>追跡システム</h1>
+        <div class="subtitle"></div>
+
+        <div class="exec-summary">
+            <strong>【エグゼクティブ・サマリー】</strong><br>
+            顧客の「資料閲覧」という行動をリアルタイムに検知し、インサイドセールスが<span
+                style="color:var(--accent); font-weight:bold;">「最も顧客の熱量が高い瞬間」</span>にピンポイントでアプローチできる環境を構築する。<br>
+            「入力フォーム離脱」を防ぐマジックリンク技術により、商談獲得率を飛躍的に向上させる。
+        </div>
+    </div>
+
+    <!-- 2ページ目：課題 -->
+    <div class="page-slide">
+        <h2>1. プロジェクトの目的と解決する課題</h2>
+        <p>現在のBtoB営業・マーケティングプロセスにおいて、以下のボトルネックが商談獲得の機会損失を招いている。本システムはこれらの課題を技術で解決し、商談化率の劇的な向上を目指す。</p>
+
+        <div class="issue-grid">
+            <div class="issue-card">
+                <div class="issue-icon">📉</div>
+                <div class="issue-content">
+                    <h3>高いフォーム離脱率</h3>
+                    <p>資料ダウンロード時に長々とした個人情報入力を求めると、70%以上の見込み客が「面倒」と感じて離脱してしまう。</p>
+                </div>
+            </div>
+            <div class="issue-card">
+                <div class="issue-icon">📞</div>
+                <div class="issue-content">
+                    <h3>架電タイミングのズレ</h3>
+                    <p>顧客が自社製品を検討していない（熱量が低い）タイミングで架電してしまい、「今は忙しい」と断られてしまう。</p>
+                </div>
+            </div>
+            <div class="issue-card">
+                <div class="issue-icon">⚙️</div>
+                <div class="issue-content">
+                    <h3>システム運用の属人化</h3>
+                    <p>既存ツールは設定が複雑で、顧客データや辞書の修正にIT部門の介入が必要となり、現場のスピード感を損なう。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3ページ目：システム全体図 -->
+    <div class="page-slide">
+        <h2>2. システム全体像と仕組み</h2>
+        <p>「顧客に一切の入力をさせないマジックリンク」と、「1秒単位で閲覧状況を検知するリアルタイム通信」を組み合わせた強力なアーキテクチャである。</p>
+
+        <div class="system-diagram">
+            <div class="diagram-node">
+                <div class="node-icon">📱</div>
+                <div class="node-text">
+                    <div class="node-title">1. ワンクリック・アクセス</div>
+                    <div class="node-desc">顧客は営業から送られた専用URL/QRを開くだけ。<strong
+                            style="color:var(--accent);">入力フォームを完全スキップ</strong></div>
+                </div>
+            </div>
+            <div class="diagram-arrow">▶︎</div>
+            <div class="diagram-node">
+                <div class="node-icon">📄</div>
+                <div class="node-text">
+                    <div class="node-title">2. 資料閲覧（トラッキング）</div>
+                    <div class="node-desc">「どのページを何分見ているか」をシステムが裏側で<strong>1秒単位でミリ秒計測</strong></div>
+                </div>
+            </div>
+            <div class="diagram-arrow">▶︎</div>
+            <div class="diagram-node accent">
+                <div class="node-icon">🚨</div>
+                <div class="node-text">
+                    <div class="node-title" style="color:var(--accent);">3. リアルタイム検知・架電</div>
+                    <div class="node-desc">熱量の高い顧客をダッシュボードで<strong>「HOT!!」と赤く強調表示。</strong>その瞬間に即架電する。</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4ページ目：Before/After -->
+    <div class="page-slide">
+        <h2>3. 業務フローの変化（Before / After）</h2>
+        <p>システム導入により、顧客体験（UX）の向上と営業効率の最大化が同時に実現する。</p>
+
+        <div class="comparison-container">
+            <div class="comp-box comp-before">
+                <div class="comp-title">❌ 従来の非効率なフロー</div>
+                <ul class="step-list">
+                    <li>展示会で名刺交換・リード獲得</li>
+                    <li>数日後にお礼メールを一斉送信</li>
+                    <li>URLを開くが、<span class="bad-point">入力が面倒で離脱</span></li>
+                    <li>営業は上から順番に古いリストへ架電</li>
+                    <li><span class="bad-point">「今は忙しい」と電話を切られる</span></li>
+                </ul>
+            </div>
+            <div class="comp-box comp-after">
+                <div class="comp-title">✨ 本システム導入後</div>
+                <ul class="step-list">
+                    <li>リードを即時登録＆URL発行</li>
+                    <li>お礼メール送信。<span class="good-point">顧客は1クリック閲覧</span></li>
+                    <li>閲覧した瞬間に<span class="good-point">「〇〇社が閲覧中」と通知</span></li>
+                    <li>顧客が資料を見ている<span class="good-point">一番熱い瞬間に架電</span></li>
+                    <li><span class="good-point">「ちょうど見ていた！」と商談へ</span></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5ページ目：コア機能 -->
+    <div class="page-slide">
+        <h2>4. 提供する4つのコア機能</h2>
+        <p>現場のインサイドセールス担当者が「直感的に」「すぐに」使えるダッシュボードを提供する。</p>
+
+        <div class="feature-grid">
+            <div class="feature-card" style="border-top-color: var(--accent);">
+                <h4 style="color: var(--accent);">🔥 リアルタイム・ヒートマップ</h4>
+                <p>「誰が・何分見ているか」を可視化。見積画面に滞在中の顧客を「HOT!!」と表示し、星1〜5の見込み度を評価できる。</p>
+            </div>
+            <div class="feature-card">
+                <h4>🔗 マジックリンク＆QR発行</h4>
+                <p>顧客情報を事前登録した瞬間に、専用URLとQRコードを自動生成。展示会での手渡しや、個別メールへの添付に最適である。</p>
+            </div>
+            <div class="feature-card">
+                <h4>🤖 企業名・自動予測AI（辞書）</h4>
+                <p>メールアドレスを入力した際も、ドメインから企業名を自動で予測・補完。顧客の入力負担を最小限に抑える。</p>
+            </div>
+            <div class="feature-card">
+                <h4>🏢 現場主導のデータ管理</h4>
+                <p>営業担当者がダッシュボード上から直接、顧客情報の修正や、予測辞書のCSVインポートを行える。エンジニア不要で運用が完結する。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6ページ目：導入効果 -->
+    <div class="page-slide">
+        <h2>5. 期待される導入効果（ROI）</h2>
+        <p>本システムの導入により、リードの獲得から商談化までの歩留まりを大幅に改善する。</p>
+
+        <ul class="roi-list">
+            <li>
+                <div class="roi-title">🎯 商談化率（コンバージョン率）の増加</div>
+                <p class="roi-desc">インサイドセールスの架電タイミングを「顧客の熱量が最も高い瞬間」に最適化することで、担当者接続率およびアポイント獲得率を劇的に改善する。</p>
+            </li>
+            <li>
+                <div class="roi-title">🛡️ リードロス（機会損失）の極小化</div>
+                <p class="roi-desc">マジックリンクによる入力スキップ機能により、これまで「面倒くさい」で離脱していた潜在層の足跡を確実に捕捉する。</p>
+            </li>
+            <li>
+                <div class="roi-title">⏱️ 営業リソースの最適化</div>
+                <p class="roi-desc">ダッシュボードの滞在時間を元に、「今アプローチすべきHOTな顧客」と「後回しでよい顧客」を瞬時に優先順位付けでき、無駄な架電工数を削減する。</p>
+            </li>
+        </ul>
+    </div>
+
+</body>
+
+</html>
